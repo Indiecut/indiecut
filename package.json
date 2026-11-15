@@ -28,6 +28,8 @@
     "build": "vite build",
     "pack": "npm run build && electron-builder --dir",
     "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist": "npm run build && electron-builder --mac --win",
     "typecheck": "tsc --noEmit",
     "test:unit": "tsx src/compositor/blend.test.ts && tsx src/compositor/transform.test.ts && tsx src/compositor/mask.test.ts && tsx src/compositor/removeBgColor.test.ts && tsx src/engine/animatable.test.ts && tsx src/ai/captions/segmentSpeechIntoLines.test.ts && tsx src/ai/captions/parseTimedTextFile.test.ts && tsx src/ai/captions/downmixToMono16k.test.ts",
     "preview": "vite preview"
@@ -35,29 +37,69 @@
   "build": {
     "appId": "com.indiecut.app",
     "productName": "IndieCut",
+    "copyright": "Copyright © IndieCut contributors",
     "directories": {
       "buildResources": "build",
-      "output": "dist"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "package.json"
     ],
+    "asar": true,
+    "artifactName": "${productName}-${os}-${arch}.${ext}",
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.video",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
       ]
+    },
+    "dmg": {
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IndieCut",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "${productName}-win-${arch}-setup.${ext}"
     },
     "linux": {
       "icon": "build/icon.png",
-      "category": "Video"
+      "category": "Video",
+      "target": ["AppImage"]
     },
-    "win": {
-      "icon": "build/icon.png"
-    }
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Indiecut",
+        "repo": "indiecut",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

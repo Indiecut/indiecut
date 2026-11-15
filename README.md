@@ -4,6 +4,12 @@
 export, text & stickers, captions, effects, and more — built with Electron,
 React, and Vite.
 
+[![Download for Mac](https://img.shields.io/badge/Download-macOS-0e1012?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-arm64.dmg)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0e1012?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-win-x64-setup.exe)
+[![Past releases](https://img.shields.io/badge/Past-releases-9aa3ad?style=for-the-badge)](https://github.com/Indiecut/indiecut/releases)
+
+[Intel Mac (.dmg)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-x64.dmg)
+
 **Website:** [indiecut.io](https://indiecut.io)  
 **Source:** [github.com/Indiecut/indiecut](https://github.com/Indiecut/indiecut)  
 **Version:** 1.0.0  
@@ -44,7 +50,35 @@ This starts the Vite dev server and opens the Electron shell.
 | `npm run typecheck` | TypeScript check |
 | `npm run test:unit` | Unit tests |
 | `npm run pack` | Unpackaged Electron build |
-| `npm run dist:mac` | macOS DMG via electron-builder |
+| `npm run dist:mac` | macOS DMGs (arm64 + x64) via electron-builder |
+| `npm run dist:win` | Windows NSIS installer (`.exe`) via electron-builder |
+| `npm run dist` | Package for macOS and Windows (platform host permitting) |
+
+## Downloads / releases
+
+| Platform | Download |
+| --- | --- |
+| macOS Apple Silicon | [IndieCut-mac-arm64.dmg](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-arm64.dmg) |
+| macOS Intel | [IndieCut-mac-x64.dmg](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-x64.dmg) |
+| Windows x64 | [IndieCut-win-x64-setup.exe](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-win-x64-setup.exe) |
+
+**Ship a release**
+
+1. Bump `"version"` in `package.json`
+2. Commit, then tag: `git tag v1.0.0 && git push origin v1.0.0`
+3. The [Release](.github/workflows/release.yml) workflow builds Mac + Windows installers and publishes them on that tag
+
+**Build locally**
+
+```bash
+# macOS host → .dmg files in release/
+npm run dist:mac
+
+# Windows host → NSIS setup .exe in release/
+npm run dist:win
+```
+
+Installers are unsigned by default. On macOS, right-click → **Open** the first time if Gatekeeper blocks the app. On Windows, SmartScreen may require **More info** → **Run anyway**.
 
 ## Project layout
 

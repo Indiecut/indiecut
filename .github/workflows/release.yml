@@ -1,0 +1,143 @@
+# Build macOS (.dmg) and Windows (.exe) installers and attach them to a
+# GitHub Release. Triggered by version tags (v1.0.0) or manual dispatch.
+#
+# Unsigned builds by default (no Apple / Authenticode certs). macOS users may
+# need to right-click → Open the first time; Windows may show SmartScreen.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach installers to (e.g. v1.0.0). Leave empty to only upload artifacts."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: mac
+            args: --mac
+            artifacts: |
+              release/*.dmg
+              release/*.blockmap
+          - os: windows-latest
+            platform: win
+            args: --win
+            artifacts: |
+              release/*-setup.exe
+              release/*.blockmap
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Package installers
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --no-install electron-builder ${{ matrix.args }} --publish never
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+          pattern: installers-*
+          merge-multiple: true
+
+      - name: List artifacts
+        shell: bash
+        run: find installers -type f | sort
+
+      - name: Resolve tag
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(installers/*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No installer files found"
+            exit 1
+          fi
+
+          NOTES=$(cat <<'EOF'
+          ## Downloads
+
+          These asset names stay stable so README “latest” links keep working:
+
+          | Platform | File |
+          | --- | --- |
+          | macOS (Apple Silicon) | [IndieCut-mac-arm64.dmg](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-arm64.dmg) |
+          | macOS (Intel) | [IndieCut-mac-x64.dmg](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-x64.dmg) |
+          | Windows (x64) | [IndieCut-win-x64-setup.exe](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-win-x64-setup.exe) |
+
+          ### First launch notes
+
+          - **macOS:** builds are unsigned. If Gatekeeper blocks the app, right-click the app → **Open**, then confirm.
+          - **Windows:** builds are unsigned. SmartScreen may warn — choose **More info** → **Run anyway**.
+          EOF
+          )
+          # Strip leading indentation from the heredoc
+          NOTES=$(printf '%s\n' "$NOTES" | sed 's/^          //')
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Uploading assets to existing release $TAG"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            echo "Creating release $TAG"
+            gh release create "$TAG" "${files[@]}" \
+              --title "$TAG" \
+              --notes "$NOTES"
+          fi

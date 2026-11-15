@@ -4,6 +4,7 @@ node_modules/
 # Build / package output
 dist/
 dist-electron/
+release/
 *.dmg
 *.exe
 *.AppImage
@@ -36,3 +37,4 @@ public/ort/
 
 # Local temp
 payload/
+ai_doc/
