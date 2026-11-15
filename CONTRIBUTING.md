@@ -12,7 +12,7 @@ and constructive in issues, discussions, and PRs.
 
 1. Fork and clone the repository
 2. Install dependencies: `npm install`
-3. Run the app: `npm run dev`
+3. Run the desktop app: `npm run dev` (or web PWA: `npm run dev:web`)
 4. Before opening a PR, run:
 
 ```bash
@@ -22,7 +22,7 @@ npm run test:unit
 
 ## Project conventions
 
-- **TypeScript** for app code under `src/`
+- **TypeScript** for app code under `packages/editor/src/` (shared) and `apps/*/src/`
 - Prefer small, focused PRs over large mixed changes
 - Match existing patterns for compositor, timeline, and inspector panels
 - Do not commit `node_modules/`, `dist/`, `.env*`, or local build artifacts

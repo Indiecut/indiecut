@@ -1,8 +1,14 @@
 # Build macOS (.dmg) and Windows (.exe) installers and attach them to a
-# GitHub Release. Triggered by version tags (v1.0.0) or manual dispatch.
+# GitHub Release. Optionally deploys the web PWA when maintainer Hosting
+# secrets are configured (not required for contributors / forks).
 #
 # Unsigned builds by default (no Apple / Authenticode certs). macOS users may
 # need to right-click → Open the first time; Windows may show SmartScreen.
+#
+# Maintainer-only secrets (optional — skip web deploy if unset):
+#   FIREBASE_SERVICE_ACCOUNT  — service account JSON
+#   FIREBASE_PROJECT_ID       — Firebase / GCP project id (may differ from site)
+#   FIREBASE_HOSTING_CONFIG   — full firebase.json text (include "site": "indiecut-app")
 
 name: Release
 
@@ -56,10 +62,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build renderer
-        run: npm run build
+      - name: Build desktop renderer
+        run: npm run build -w @indiecut/desktop
 
       - name: Package installers
+        working-directory: apps/desktop
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -73,13 +80,57 @@ jobs:
           path: ${{ matrix.artifacts }}
           if-no-files-found: error
 
+  deploy-web:
+    name: Deploy web PWA
+    runs-on: ubuntu-latest
+    # Skip when maintainer Hosting secrets are not configured (forks / local mirrors).
+    if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' && secrets.FIREBASE_PROJECT_ID != '' && secrets.FIREBASE_HOSTING_CONFIG != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web PWA
+        run: npm run build:web
+
+      - name: Write maintainer Hosting config
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_HOSTING_CONFIG: ${{ secrets.FIREBASE_HOSTING_CONFIG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$FIREBASE_HOSTING_CONFIG" > firebase.json
+          printf '{"projects":{"default":"%s"}}\n' "$FIREBASE_PROJECT_ID" > .firebaserc
+          # Sanity: must point at the web build output
+          grep -q 'apps/web/dist' firebase.json
+
+      - name: Deploy Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, deploy-web]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (needs.deploy-web.result == 'success' || needs.deploy-web.result == 'skipped') &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.tag != '')
     steps:
-      # Required so `gh release create` can resolve the tag via git.
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -136,7 +187,6 @@ jobs:
           - **Windows:** builds are unsigned. SmartScreen may warn — choose **More info** → **Run anyway**.
           EOF
           )
-          # Strip leading indentation from the heredoc
           NOTES=$(printf '%s\n' "$NOTES" | sed 's/^          //')
 
           if gh release view "$TAG" >/dev/null 2>&1; then

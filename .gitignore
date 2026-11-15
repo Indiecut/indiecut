@@ -13,8 +13,16 @@ release/
 # Env / secrets
 .env
 .env.*
-!.env.example
 *.local
+
+# Maintainer Hosting (generated locally / never commit)
+.firebase/
+firebase.json
+.firebaserc
+*-firebase-adminsdk-*.json
+
+# vite-plugin-pwa (dev output)
+dev-dist/
 
 # Logs / OS
 *.log

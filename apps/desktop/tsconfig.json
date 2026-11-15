@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../packages/editor/src/*"],
+      "@indiecut/editor": ["../../packages/editor/src/index.ts"],
+      "@indiecut/platform": ["../../packages/platform/src/index.ts"]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "../../packages/editor/src/**/*.ts",
+    "../../packages/editor/src/**/*.tsx",
+    "../../packages/platform/src/**/*.ts"
+  ]
+}

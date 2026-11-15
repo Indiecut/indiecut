@@ -2,7 +2,7 @@
   "name": "indiecut",
   "version": "1.0.0",
   "private": true,
-  "description": "IndieCut — open-source desktop video editor",
+  "description": "IndieCut — open-source video editor (desktop + web)",
   "author": {
     "name": "Sumit Kumar",
     "url": "https://github.com/sumit1826"
@@ -16,112 +16,26 @@
   "bugs": {
     "url": "https://github.com/Indiecut/indiecut/issues"
   },
-  "main": "electron/main.cjs",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "postinstall": "node scripts/copy-ort-assets.mjs",
-    "predev": "node scripts/copy-ort-assets.mjs",
-    "prebuild": "node scripts/copy-ort-assets.mjs",
-    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
-    "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron electron/main.cjs",
-    "build": "vite build",
-    "pack": "npm run build && electron-builder --dir",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist": "npm run build && electron-builder --mac --win",
-    "typecheck": "tsc --noEmit",
-    "test:unit": "tsx src/compositor/blend.test.ts && tsx src/compositor/transform.test.ts && tsx src/compositor/mask.test.ts && tsx src/compositor/removeBgColor.test.ts && tsx src/engine/animatable.test.ts && tsx src/ai/captions/segmentSpeechIntoLines.test.ts && tsx src/ai/captions/parseTimedTextFile.test.ts && tsx src/ai/captions/downmixToMono16k.test.ts",
-    "preview": "vite preview"
+    "dev": "npm run dev -w @indiecut/desktop",
+    "dev:web": "npm run dev -w @indiecut/web",
+    "build": "npm run build -w @indiecut/desktop",
+    "build:web": "npm run build -w @indiecut/web",
+    "pack": "npm run pack -w @indiecut/desktop",
+    "dist:mac": "npm run dist:mac -w @indiecut/desktop",
+    "dist:win": "npm run dist:win -w @indiecut/desktop",
+    "dist": "npm run dist -w @indiecut/desktop",
+    "typecheck": "npm run typecheck -w @indiecut/platform && npm run typecheck -w @indiecut/editor && npm run typecheck -w @indiecut/desktop && npm run typecheck -w @indiecut/web",
+    "test:unit": "npm run test:unit -w @indiecut/editor",
+    "preview:web": "npm run preview -w @indiecut/web"
   },
-  "build": {
-    "appId": "com.indiecut.app",
-    "productName": "IndieCut",
-    "copyright": "Copyright © IndieCut contributors",
-    "directories": {
-      "buildResources": "build",
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json"
-    ],
-    "asar": true,
-    "artifactName": "${productName}-${os}-${arch}.${ext}",
-    "mac": {
-      "icon": "build/icon.icns",
-      "category": "public.app-category.video",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "target": [
-        {
-          "target": "dmg",
-          "arch": ["arm64", "x64"]
-        }
-      ]
-    },
-    "dmg": {
-      "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
-      ]
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "IndieCut",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "artifactName": "${productName}-win-${arch}-setup.${ext}"
-    },
-    "linux": {
-      "icon": "build/icon.png",
-      "category": "Video",
-      "target": ["AppImage"]
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Indiecut",
-        "repo": "indiecut",
-        "releaseType": "release"
-      }
-    ]
-  },
-  "dependencies": {
-    "@huggingface/transformers": "3.8.1",
-    "localforage": "^1.10.0",
-    "mediabunny": "^1.65.2",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-resizable-panels": "^2.1.7",
-    "zustand": "^5.0.16"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
-    "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
-    "electron-builder": "^26.18.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3",
-    "wait-on": "^8.0.1"
+  "engines": {
+    "node": ">=20"
   }
 }
