@@ -71,11 +71,14 @@ export function Header() {
     }
   };
 
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  // Traffic-light inset only for the desktop shell (hiddenInset title bar), not web/PWA.
+  const isMacDesktop =
+    typeof navigator !== "undefined" &&
+    /Mac/.test(navigator.platform) &&
+    Boolean(getPlatform()?.capabilities?.revealInFolder);
 
   return (
-    <header className={`app-header${isMac ? " app-header--mac" : ""}`}>
+    <header className={`app-header${isMacDesktop ? " app-header--mac" : ""}`}>
       <div className="app-header__left">
         <span className="app-header__brand">
           <img

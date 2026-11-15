@@ -27,6 +27,7 @@
     "appId": "com.indiecut.app",
     "productName": "IndieCut",
     "copyright": "Copyright © IndieCut contributors",
+    "electronVersion": "33.2.1",
     "directories": {
       "buildResources": "../../build",
       "output": "../../release"
@@ -102,7 +103,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "electron": "33.2.1",
     "electron-builder": "^26.18.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
