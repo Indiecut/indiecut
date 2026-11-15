@@ -1,4 +1,4 @@
-# <img src="build/icon.png" alt="" width="40" height="40" style="vertical-align: -0.45em; margin-right: 0.35em;" />IndieCut
+# <img src="build/readme-logo.png" alt="IndieCut" height="35" />
 
 **IndieCut** is an open-source video editor — timeline editing, preview,
 export, text & stickers, captions, effects, and more — built with Electron,
