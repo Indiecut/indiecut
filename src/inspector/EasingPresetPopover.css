@@ -1,0 +1,144 @@
+.easing-preset-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 268px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-elevated, #2a2a2a);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+}
+
+.easing-preset-popover__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0 2px 8px;
+}
+
+.easing-preset-popover__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.easing-preset-popover__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.easing-preset-popover__tile:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-primary);
+}
+
+.easing-preset-popover__tile--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.easing-preset-popover__icon {
+  width: 40px;
+  height: 28px;
+}
+
+.easing-preset-popover__guide {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.easing-preset-popover__path {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.easing-preset-popover__label {
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.segment-curve-mini {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.segment-curve-mini__label {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+
+.segment-curve-mini__svg {
+  display: block;
+  touch-action: none;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+}
+
+.segment-curve-mini__frame {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.segment-curve-mini__guide {
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.segment-curve-mini__curve {
+  stroke: #5ec8ff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.segment-curve-mini__stem {
+  stroke: #f0c14a;
+  stroke-width: 1;
+}
+
+.segment-curve-mini__handle {
+  fill: #f0c14a;
+  stroke: #1a1a1a;
+  stroke-width: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.segment-curve-mini__handle:active {
+  cursor: grabbing;
+}
+
+.segment-curve-mini__knot {
+  fill: #5ec8ff;
+  stroke: #0d0d0d;
+  stroke-width: 1;
+  pointer-events: none;
+}

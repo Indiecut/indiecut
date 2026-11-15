@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "source": "IndieCut video effects",
+  "license": "IndieCut",
+  "effects": [
+    {
+      "id": "blur",
+      "name": "Blur",
+      "category": "basic",
+      "defaultDurationMs": 3000,
+      "tags": ["blur"]
+    },
+    {
+      "id": "grain",
+      "name": "Grain",
+      "category": "basic",
+      "defaultDurationMs": 3000,
+      "tags": ["film", "noise"]
+    },
+    {
+      "id": "vignette",
+      "name": "Vignette",
+      "category": "basic",
+      "defaultDurationMs": 3000,
+      "tags": ["edges"]
+    },
+    {
+      "id": "shake",
+      "name": "Shake",
+      "category": "basic",
+      "defaultDurationMs": 3000,
+      "tags": ["motion", "shake"]
+    }
+  ]
+}

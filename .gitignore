@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build / package output
+dist/
+dist-electron/
+*.dmg
+*.exe
+*.AppImage
+*.blockmap
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Tooling caches
+coverage/
+*.tsbuildinfo
+.cache/
+
+# Regenerated at install (scripts/copy-ort-assets.mjs)
+public/ort/
+
+# Local temp
+payload/

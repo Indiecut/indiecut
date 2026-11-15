@@ -1,0 +1,239 @@
+.record-dialog {
+  position: fixed;
+  top: 72px;
+  left: 28%;
+  z-index: 40;
+  width: min(360px, calc(100vw - 48px));
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  color: var(--text-primary);
+  font-family: inherit;
+  overflow: hidden;
+}
+
+.record-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.record-dialog__header:active {
+  cursor: grabbing;
+}
+
+.record-dialog__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.record-dialog__close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.record-dialog__close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.record-dialog__body {
+  margin: 10px 12px;
+  padding: 12px;
+  background: #0d0d0d;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.record-dialog__status-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.record-dialog__rec {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.record-dialog__rec:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.record-dialog__rec:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.record-dialog__rec-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e23b3b;
+}
+
+.record-dialog__rec--stop .record-dialog__stop-square {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: #e23b3b;
+}
+
+.record-dialog__timer-block {
+  min-width: 0;
+}
+
+.record-dialog__timer {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.record-dialog__status {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.record-dialog__hint {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.record-dialog__meter {
+  width: 100%;
+  height: 28px;
+  display: block;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.record-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.record-dialog__field select {
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #161616;
+  color: var(--text-primary);
+  padding: 0 8px;
+  font: inherit;
+}
+
+.record-dialog__field--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.record-dialog__field--row > span:first-child {
+  min-width: 52px;
+}
+
+.record-dialog__field--row input[type="range"] {
+  flex: 1;
+}
+
+.record-dialog__vol-num {
+  width: 52px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #161616;
+  color: var(--text-primary);
+  text-align: center;
+  font: inherit;
+}
+
+.record-dialog__mic-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.record-dialog__options {
+  padding: 4px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.record-dialog__check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.record-dialog__check input {
+  margin-top: 2px;
+}
+
+.record-dialog__check strong {
+  display: block;
+  font-weight: 600;
+}
+
+.record-dialog__check small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.record-dialog__error {
+  margin: 0 16px 14px;
+  color: #f07178;
+  font-size: 12px;
+}
+
+.preview-panel__countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+  font-size: clamp(64px, 18vw, 140px);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.65);
+  user-select: none;
+}

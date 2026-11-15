@@ -1,0 +1,8 @@
+.preview-remove-bg-eyedropper {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  cursor: crosshair;
+  border-radius: inherit;
+  background: transparent;
+}

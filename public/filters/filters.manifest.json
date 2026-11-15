@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "source": "IndieCut original .cube LUTs",
+  "license": "IndieCut",
+  "filters": [
+    {
+      "id": "life_clear",
+      "name": "Clear",
+      "file": "luts/life_clear.cube",
+      "category": "life",
+      "tags": ["portrait", "bright"]
+    },
+    {
+      "id": "movies_teal_orange",
+      "name": "Teal & Orange",
+      "file": "luts/movies_teal_orange.cube",
+      "category": "movies",
+      "tags": ["cinematic"]
+    },
+    {
+      "id": "retro_faded_film",
+      "name": "Faded Film",
+      "file": "luts/retro_faded_film.cube",
+      "category": "retro",
+      "tags": ["vintage"]
+    },
+    {
+      "id": "nature_forest_punch",
+      "name": "Forest Punch",
+      "file": "luts/nature_forest_punch.cube",
+      "category": "nature",
+      "tags": ["landscape"]
+    },
+    {
+      "id": "food_feast",
+      "name": "Feast",
+      "file": "luts/food_feast.cube",
+      "category": "food",
+      "tags": ["warm", "saturated"]
+    },
+    {
+      "id": "bw_punchy",
+      "name": "Punchy B&W",
+      "file": "luts/bw_punchy.cube",
+      "category": "bw",
+      "tags": ["mono"]
+    },
+    {
+      "id": "technical_rec709",
+      "name": "Technical Rec.709",
+      "file": "luts/technical_rec709.cube",
+      "category": "technical",
+      "tags": ["log", "technical"]
+    }
+  ]
+}

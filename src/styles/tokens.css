@@ -1,0 +1,32 @@
+:root {
+  /* Surfaces — cool slate */
+  --bg-app: #0e1012;
+  --bg-panel: #15181c;
+  --bg-elevated: #262b32;
+  --border: #2a3038;
+
+  /* Text */
+  --text-primary: #f3f4f6;
+  --text-secondary: #9aa3ad;
+
+  /* Accent — warm coral (IndieCut) */
+  --accent: #f0754a;
+  --accent-muted: rgba(240, 117, 74, 0.2);
+  --accent-contrast: #1a0e0a;
+
+  /* Timeline track colors */
+  --track-video: #3d8f7a;
+  --track-audio: #4a6fa5;
+  --track-text: #a67c5b;
+  --track-caption: #2f9e7a;
+  --track-sticker: #d4a017;
+  --track-effect: #8b74b0;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  /* Layout */
+  --header-height: 44px;
+  --font-ui: "Geist", "IBM Plex Sans", "Segoe UI", sans-serif;
+}

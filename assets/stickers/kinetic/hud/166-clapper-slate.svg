@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+    
+    <defs>
+      <linearGradient id="stk_166_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FACC15" />
+        <stop offset="100%" stop-color="#6366F1" />
+      </linearGradient>
+      <linearGradient id="stk_166_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+      </linearGradient>
+  
+      <filter id="stk_166_fx" x="-20%" y="-20%" width="140%" height="140%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="dilated"/>
+        <feFlood flood-color="#FFFFFF" result="white"/>
+        <feComposite in="white" in2="dilated" operator="in" result="outline"/>
+        <feDropShadow in="outline" dx="0" dy="6" stdDeviation="5" flood-color="#000000" flood-opacity="0.55" result="shadow"/>
+        <feMerge>
+          <feMergeNode in="shadow"/>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#stk_166_fx)">
+      
+        <rect x="32" y="92" width="192" height="128" rx="14" fill="#0F172A" stroke="#FFFFFF" stroke-width="4.2"/>
+        <g transform="rotate(-10 36 88)">
+          <rect x="32" y="54" width="192" height="34" rx="6" fill="#FFFFFF" stroke="#0F172A" stroke-width="4.2"/>
+          <polygon points="56,54 84,54 68,88 40,88" fill="#0F172A"/>
+          <polygon points="112,54 140,54 124,88 96,88" fill="#0F172A"/>
+          <polygon points="168,54 196,54 180,88 152,88" fill="#0F172A"/>
+        </g>
+        <line x1="52" y1="132" x2="204" y2="132" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+        <line x1="52" y1="162" x2="156" y2="162" stroke="#FACC15" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="184" cy="176" r="16" fill="#FACC15" stroke="#FFFFFF" stroke-width="3"/>
+      
+    </g>
+  </svg>

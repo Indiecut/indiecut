@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+    
+    <defs>
+      <linearGradient id="stk_290_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#06B6D4" />
+        <stop offset="100%" stop-color="#6366F1" />
+      </linearGradient>
+      <linearGradient id="stk_290_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+      </linearGradient>
+  
+      <filter id="stk_290_fx" x="-20%" y="-20%" width="140%" height="140%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="dilated"/>
+        <feFlood flood-color="#FFFFFF" result="white"/>
+        <feComposite in="white" in2="dilated" operator="in" result="outline"/>
+        <feDropShadow in="outline" dx="0" dy="6" stdDeviation="5" flood-color="#000000" flood-opacity="0.55" result="shadow"/>
+        <feMerge>
+          <feMergeNode in="shadow"/>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#stk_290_fx)">
+      
+        <circle cx="128" cy="128" r="88" fill="#FACC15" stroke="#0F172A" stroke-width="4.2"/>
+        <path d="M68 72 A68 68 0 0 1 184 66" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+        
+          <circle cx="94" cy="106" r="16" fill="#0F172A"/>
+          <circle cx="162" cy="106" r="16" fill="#0F172A"/>
+          <circle cx="88" cy="100" r="6" fill="#FFFFFF"/>
+          <circle cx="156" cy="100" r="6" fill="#FFFFFF"/>
+        
+        <path d="M86 146 Q128 188 170 146 Z" fill="#0F172A" stroke="#0F172A" stroke-width="3.5" stroke-linejoin="round"/>
+        <path d="M104 164 Q128 180 152 164" fill="#FF3366"/>
+      
+    </g>
+  </svg>

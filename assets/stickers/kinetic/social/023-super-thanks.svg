@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+    
+    <defs>
+      <linearGradient id="stk_23_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FF3366" />
+        <stop offset="100%" stop-color="#6366F1" />
+      </linearGradient>
+      <linearGradient id="stk_23_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+      </linearGradient>
+  
+      <filter id="stk_23_fx" x="-20%" y="-20%" width="140%" height="140%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="dilated"/>
+        <feFlood flood-color="#FFFFFF" result="white"/>
+        <feComposite in="white" in2="dilated" operator="in" result="outline"/>
+        <feDropShadow in="outline" dx="0" dy="6" stdDeviation="5" flood-color="#000000" flood-opacity="0.55" result="shadow"/>
+        <feMerge>
+          <feMergeNode in="shadow"/>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#stk_23_fx)">
+      
+        <circle cx="128" cy="128" r="90" fill="none" stroke="#FACC15" stroke-width="4.2" stroke-dasharray="16 10"/>
+        <circle cx="128" cy="128" r="72" fill="#0F172A" stroke="#0F172A" stroke-width="4.2"/>
+        <path d="M128 190 C128 190 48 140 48 90 C48 62 72 44 98 44 C114 44 124 54 128 64 C132 54 142 44 158 44 C184 44 208 62 208 90 C208 140 128 190 128 190 Z" fill="#FF3366" stroke="#0F172A" stroke-width="4.2" stroke-linejoin="round"/>
+        <path d="M78 74 C68 82 66 96 72 106" fill="none" stroke="#FFFFFF" stroke-width="4.620000000000001" stroke-linecap="round"/>
+        <circle cx="182" cy="174" r="22" fill="#FACC15" stroke="#0F172A" stroke-width="3.3600000000000003"/>
+        <path d="M174 174 L180 180 L192 168" fill="none" stroke="#0F172A" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+      
+    </g>
+  </svg>

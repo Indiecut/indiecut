@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+    
+    <defs>
+      <linearGradient id="stk_351_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FACC15" />
+        <stop offset="100%" stop-color="#6366F1" />
+      </linearGradient>
+      <linearGradient id="stk_351_shine" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+      </linearGradient>
+  
+      <filter id="stk_351_fx" x="-20%" y="-20%" width="140%" height="140%">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="dilated"/>
+        <feFlood flood-color="#FFFFFF" result="white"/>
+        <feComposite in="white" in2="dilated" operator="in" result="outline"/>
+        <feDropShadow in="outline" dx="0" dy="6" stdDeviation="5" flood-color="#000000" flood-opacity="0.55" result="shadow"/>
+        <feMerge>
+          <feMergeNode in="shadow"/>
+          <feMergeNode in="outline"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#stk_351_fx)">
+      
+        <polygon points="128,20 218,58 198,172 128,236 58,172 38,58" fill="#0F172A" stroke="#FACC15" stroke-width="4.2" stroke-linejoin="round"/>
+        <polygon points="128,36 200,68 184,162 128,216 72,162 56,68" fill="#FACC15" stroke="#0F172A" stroke-width="3.57" stroke-linejoin="round"/>
+        <polygon points="80,144 96,88 128,118 160,88 176,144" fill="#FACC15" stroke="#0F172A" stroke-width="3.57" stroke-linejoin="round"/>
+        <circle cx="128" cy="168" r="14" fill="#FFFFFF" stroke="#0F172A" stroke-width="3"/>
+      
+    </g>
+  </svg>

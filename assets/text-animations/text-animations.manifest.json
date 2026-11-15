@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "none",
+      "name": "None",
+      "phase": "in",
+      "supportsDirection": false
+    },
+    {
+      "id": "fade_in",
+      "name": "Fade In",
+      "phase": "in",
+      "thumb": "thumbs/fade_in.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "pop_up",
+      "name": "Pop Up",
+      "phase": "in",
+      "thumb": "thumbs/pop_up.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "bounce",
+      "name": "Bounce",
+      "phase": "in",
+      "thumb": "thumbs/bounce.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false,
+      "aliasOf": "pop_up"
+    },
+    {
+      "id": "typewriter",
+      "name": "Typewriter",
+      "phase": "in",
+      "thumb": "thumbs/typewriter.svg",
+      "defaultDurationMs": 800,
+      "supportsDirection": false,
+      "preferGranularity": "character"
+    },
+    {
+      "id": "slide",
+      "name": "Slide",
+      "phase": "in",
+      "thumb": "thumbs/slide.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": true
+    },
+    {
+      "id": "zoom_in",
+      "name": "Zoom In",
+      "phase": "in",
+      "thumb": "thumbs/zoom_in.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "bounce_in",
+      "name": "Bounce In",
+      "phase": "in",
+      "thumb": "thumbs/bounce_in.svg",
+      "defaultDurationMs": 600,
+      "supportsDirection": false
+    },
+    {
+      "id": "blur_left",
+      "name": "Blur Left",
+      "phase": "in",
+      "thumb": "thumbs/blur_left.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": true
+    },
+    {
+      "id": "none",
+      "name": "None",
+      "phase": "out",
+      "supportsDirection": false
+    },
+    {
+      "id": "fade_out",
+      "name": "Fade Out",
+      "phase": "out",
+      "thumb": "thumbs/fade_out.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "shrink",
+      "name": "Shrink",
+      "phase": "out",
+      "thumb": "thumbs/shrink.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "slide_away",
+      "name": "Slide Away",
+      "phase": "out",
+      "thumb": "thumbs/slide_away.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": true
+    },
+    {
+      "id": "blur_out",
+      "name": "Blur Out",
+      "phase": "out",
+      "thumb": "thumbs/blur_out.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "drop_out",
+      "name": "Drop Out",
+      "phase": "out",
+      "thumb": "thumbs/drop_out.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "glitch_out",
+      "name": "Glitch Out",
+      "phase": "out",
+      "thumb": "thumbs/glitch_out.svg",
+      "defaultDurationMs": 500,
+      "supportsDirection": false
+    },
+    {
+      "id": "none",
+      "name": "None",
+      "phase": "loop",
+      "supportsDirection": false
+    },
+    {
+      "id": "wave",
+      "name": "Wave",
+      "phase": "loop",
+      "thumb": "thumbs/wave.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "pulse",
+      "name": "Pulse",
+      "phase": "loop",
+      "thumb": "thumbs/pulse.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "jiggle",
+      "name": "Jiggle",
+      "phase": "loop",
+      "thumb": "thumbs/jiggle.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "shake",
+      "name": "Shake",
+      "phase": "loop",
+      "thumb": "thumbs/shake.svg",
+      "supportsDirection": false,
+      "aliasOf": "jiggle"
+    },
+    {
+      "id": "flicker",
+      "name": "Flicker",
+      "phase": "loop",
+      "thumb": "thumbs/flicker.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "float",
+      "name": "Float",
+      "phase": "loop",
+      "thumb": "thumbs/float.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "jello",
+      "name": "Jello",
+      "phase": "loop",
+      "thumb": "thumbs/jello.svg",
+      "supportsDirection": false
+    },
+    {
+      "id": "wiggle",
+      "name": "Wiggle",
+      "phase": "loop",
+      "thumb": "thumbs/wiggle.svg",
+      "supportsDirection": false
+    }
+  ]
+}

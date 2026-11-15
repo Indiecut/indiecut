@@ -1,0 +1,344 @@
+.export-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 24px;
+}
+
+.export-modal__dialog {
+  width: min(720px, 100%);
+  max-height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.export-modal__header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.export-modal__body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+  padding: 18px;
+  overflow: auto;
+  flex: 1;
+}
+
+.export-modal__left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-modal__preview {
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.export-modal__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.export-modal__thumb-empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.export-modal__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.export-modal__right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.export-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.export-modal__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.export-modal__input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.export-modal__input:disabled {
+  opacity: 0.5;
+}
+
+.export-modal__path-row {
+  display: flex;
+  gap: 8px;
+}
+
+.export-modal__path-row .export-modal__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-modal__browse {
+  height: 32px;
+  min-width: 36px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.export-modal__browse:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.export-modal__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+.export-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 22px;
+}
+
+.export-modal__section--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.export-modal__static {
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: 6px 0;
+}
+
+.export-modal__progress-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 36px 28px 24px;
+  text-align: center;
+}
+
+.export-modal__progress-thumb {
+  width: min(280px, 100%);
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--radius-sm);
+}
+
+.export-modal__progress-pct {
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.export-modal__progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+  width: 100%;
+  max-width: 360px;
+}
+
+.export-modal__progress-bar--lg {
+  height: 8px;
+}
+
+.export-modal__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+
+.export-modal__progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 360px;
+}
+
+.export-modal__info {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.export-modal__info-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.export-modal__info-row dt {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.export-modal__info-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-modal__done-view {
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-modal__error {
+  margin: 0;
+  font-size: 12px;
+  color: #f07178;
+}
+
+.export-modal__success {
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(61, 214, 140, 0.35);
+  background: rgba(61, 214, 140, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-modal__success-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3dd68c;
+}
+
+.export-modal__success-path {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.export-modal__success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.export-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.export-modal__btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.export-modal__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.export-modal__btn--primary {
+  background: var(--accent);
+  color: #0a0a0a;
+  border: none;
+  font-weight: 600;
+}
+
+.export-modal__btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.export-modal__btn--success {
+  background: #3dd68c;
+  color: #0a0a0a;
+  border: none;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .export-modal__body {
+    grid-template-columns: 1fr;
+  }
+}
