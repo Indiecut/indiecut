@@ -28,7 +28,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          # macos-14 was retired (Nov 2026). macos-latest is arm64 and can
+          # still cross-build Intel (x64) DMGs via electron-builder.
+          - os: macos-latest
             platform: mac
             args: --mac
             artifacts: |
@@ -43,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -65,7 +67,7 @@ jobs:
         run: npx --no-install electron-builder ${{ matrix.args }} --publish never
 
       - name: Upload installer artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: installers-${{ matrix.platform }}
           path: ${{ matrix.artifacts }}
@@ -78,7 +80,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
     steps:
       - name: Download installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: installers
           pattern: installers-*
