@@ -65,6 +65,108 @@ export function isVisualAvTrack(type: TrackType): boolean {
   return type === "video" || type === "overlay";
 }
 
+/**
+ * Visual lanes that share the stack / header-reorder family.
+ * Clips stay type-locked within this family (see `trackAcceptsClipKind`);
+ * captions, effects, filters, and audio stay in their own typed bands.
+ */
+export function isSharedVisualTrack(type: TrackType): boolean {
+  return (
+    type === "video" ||
+    type === "overlay" ||
+    type === "text" ||
+    type === "sticker"
+  );
+}
+
+/** Clip kinds eligible for visual-lane spill-beside (still type-locked). */
+export function isSharedVisualClipKind(kind: Clip["kind"]): boolean {
+  return (
+    kind === "video" ||
+    kind === "image" ||
+    kind === "text" ||
+    kind === "sticker"
+  );
+}
+
+/**
+ * Whether a lane may host this clip kind.
+ * video/image ↔ video|overlay; text→text; sticker→sticker; others same-type only.
+ */
+export function trackAcceptsClipKind(
+  trackType: TrackType,
+  clipKind: Clip["kind"],
+): boolean {
+  if (clipKind === "video" || clipKind === "image") {
+    return trackType === "video" || trackType === "overlay";
+  }
+  if (clipKind === "text") return trackType === "text";
+  if (clipKind === "sticker") return trackType === "sticker";
+  if (clipKind === "caption") return trackType === "caption";
+  if (clipKind === "effect") return trackType === "effect";
+  if (clipKind === "filter") return trackType === "filter";
+  if (clipKind === "audio") return trackType === "audio";
+  return false;
+}
+
+/** New spill / placement lane type from clip kind (not from the aimed track). */
+export function creatableTypeForClipKind(
+  kind: Clip["kind"],
+): CreatableTrackType {
+  if (kind === "text") return "text";
+  if (kind === "sticker") return "sticker";
+  if (kind === "caption") return "caption";
+  if (kind === "effect") return "effect";
+  if (kind === "filter") return "filter";
+  if (kind === "audio") return "audio";
+  // video / image → new AV spill lanes sit above main video as overlay.
+  return "overlay";
+}
+
+/** Header drag-reorder is only for freely stackable visual lanes. */
+export function trackCanReorder(type: TrackType): boolean {
+  return isSharedVisualTrack(type);
+}
+
+/**
+ * Move a shared-visual track to `toIndex` in the resulting array.
+ * Captions stay above; audio stays below. Returns null if invalid or a no-op.
+ */
+export function reorderTrack(
+  tracks: Track[],
+  trackId: string,
+  toIndex: number,
+): Track[] | null {
+  const from = tracks.findIndex((t) => t.id === trackId);
+  if (from < 0) return null;
+  const track = tracks[from]!;
+  if (!trackCanReorder(track.type)) return null;
+
+  const without = [...tracks.slice(0, from), ...tracks.slice(from + 1)];
+  const clamped = Math.max(0, Math.min(toIndex, without.length));
+  if (clamped === from) return null;
+
+  const next = [
+    ...without.slice(0, clamped),
+    track,
+    ...without.slice(clamped),
+  ];
+
+  // Captions stay a leading prefix; audio stays a trailing suffix.
+  for (let i = 1; i < next.length; i++) {
+    if (next[i]!.type === "caption" && next[i - 1]!.type !== "caption") {
+      return null;
+    }
+  }
+  for (let i = 0; i < next.length - 1; i++) {
+    if (next[i]!.type === "audio" && next[i + 1]!.type !== "audio") {
+      return null;
+    }
+  }
+
+  return next;
+}
+
 export function anyTrackSoloed(tracks: Track[]): boolean {
   return tracks.some((t) => Boolean(t.solo));
 }
@@ -192,6 +294,11 @@ export function trackRangeIsFree(
  * Reuse an unlocked track of `type` with free space at the range,
  * or insert a new track when every existing lane would overlap.
  */
+/**
+ * Find a free lane of `type`, or create one.
+ * Preferred is used only when it matches `type` and is free; otherwise any free
+ * same-type lane wins. New lanes insert beside preferred when present.
+ */
 export function ensureTrackForRange(
   tracks: Track[],
   type: CreatableTrackType,
@@ -225,6 +332,12 @@ export function ensureTrackForRange(
   }
 
   const created = createEmptyTrack(type);
+  if (preferredId && tracks.some((t) => t.id === preferredId)) {
+    return {
+      tracks: insertTrackBefore(tracks, created, preferredId),
+      trackId: created.id,
+    };
+  }
   return {
     tracks: insertTrackByType(tracks, created),
     trackId: created.id,
@@ -232,8 +345,8 @@ export function ensureTrackForRange(
 }
 
 /**
- * Video / image placement: prefer the aimed lane, then any free video/overlay,
- * else create an overlay above the main video (upper lane).
+ * Video / image placement: prefer the aimed video/overlay lane,
+ * then free video/overlay, else create an overlay above the main video.
  */
 export function ensureVisualAvTrackForRange(
   tracks: Track[],
@@ -266,6 +379,14 @@ export function ensureVisualAvTrackForRange(
         return { tracks, trackId: t.id };
       }
     }
+  }
+
+  if (preferredId && tracks.some((t) => t.id === preferredId)) {
+    const created = createEmptyTrack("overlay");
+    return {
+      tracks: insertTrackBefore(tracks, created, preferredId),
+      trackId: created.id,
+    };
   }
 
   const hasVideo = tracks.some((t) => t.type === "video");
@@ -375,11 +496,16 @@ export function appendTrack(
 
 /**
  * Drop empty lanes automatically.
- * Always keep at least one video and one audio track, even if empty.
+ * Keep one empty audio always (when no audio content).
+ * Keep one empty video only when no shared-visual content remains — otherwise
+ * moving the main clip onto an overlay left a dead empty video under it.
  */
 export function pruneEmptyTracks(tracks: Track[]): Track[] {
   const hasNonEmptyVideo = tracks.some(
     (t) => t.type === "video" && t.clips.length > 0,
+  );
+  const hasNonEmptySharedVisual = tracks.some(
+    (t) => isSharedVisualTrack(t.type) && t.clips.length > 0,
   );
   const hasNonEmptyAudio = tracks.some(
     (t) => t.type === "audio" && t.clips.length > 0,
@@ -392,6 +518,8 @@ export function pruneEmptyTracks(tracks: Track[]): Track[] {
 
     if (t.type === "video") {
       if (hasNonEmptyVideo) return false;
+      // Overlay/text/sticker (or another video) still has clips — drop the husk.
+      if (hasNonEmptySharedVisual) return false;
       if (keptEmptyVideo) return false;
       keptEmptyVideo = true;
       return true;
@@ -486,40 +614,17 @@ export type MoveClipResult = {
   usedSpillTrackId?: string;
 };
 
-function clipCanMoveToTrack(clip: Clip, from: Track, to: Track): boolean {
+/** Whether a clip may be moved onto a destination track (type rules). */
+export function clipCanMoveToTrack(
+  clip: Clip,
+  from: Track,
+  to: Track,
+): boolean {
   if (to.locked) return false;
-  const avOk =
-    isVisualAvTrack(from.type) &&
-    isVisualAvTrack(to.type) &&
-    (clip.kind === "video" || clip.kind === "image");
-  const textOk =
-    from.type === "text" && to.type === "text" && clip.kind === "text";
-  const captionOk =
-    from.type === "caption" &&
-    to.type === "caption" &&
-    clip.kind === "caption";
-  const stickerOk =
-    from.type === "sticker" &&
-    to.type === "sticker" &&
-    clip.kind === "sticker";
-  const effectOk =
-    from.type === "effect" && to.type === "effect" && clip.kind === "effect";
-  const filterOk =
-    from.type === "filter" && to.type === "filter" && clip.kind === "filter";
-  const audioOk =
-    from.type === "audio" && to.type === "audio" && clip.kind === "audio";
-  return (
-    avOk || textOk || captionOk || stickerOk || effectOk || filterOk || audioOk
-  );
-}
-
-/** Creatable type for a spill lane next to an aimed track. */
-function spillTypeForAimedTrack(aimed: Track): CreatableTrackType {
-  if (isVisualAvTrack(aimed.type)) {
-    // New visual lanes above video are overlays (upper stack).
-    return "overlay";
-  }
-  return aimed.type as CreatableTrackType;
+  // Type-locked lanes: never land a clip on a foreign track type.
+  // (Cross-type aim creates/reuses a same-type spill beside the target instead.)
+  if (!trackAcceptsClipKind(from.type, clip.kind)) return false;
+  return trackAcceptsClipKind(to.type, clip.kind);
 }
 
 function ensureSpillTrackBeside(
@@ -546,11 +651,11 @@ export function moveClip(args: {
   playheadMs: number;
   magnetEnabled: boolean;
   pxPerSec: number;
-  /** Optional cross-track move (video ↔ overlay only). */
+  /** Optional cross-track aim (same-type land, or spill same-type beside). */
   targetTrackId?: string;
   /**
-   * When aiming at another lane that is busy, create/reuse a spill lane beside
-   * it instead of teleporting to a distant free lane (live cross-lane drag).
+   * When aiming at another lane: land if compatible + free; if busy or wrong
+   * type, create/reuse a same-type spill beside it (live cross-lane drag).
    */
   intentionalLaneMove?: boolean;
   /** Stable id for a spill lane reused across live drag frames. */
@@ -589,9 +694,7 @@ export function moveClip(args: {
   if (args.targetTrackId && args.targetTrackId !== found.track.id) {
     // Live spill lane from a prior frame — inject if missing, then place on it.
     if (args.spillTrackId && args.targetTrackId === args.spillTrackId) {
-      const spillType = isVisualAvTrack(found.track.type)
-        ? ("overlay" as const)
-        : (found.track.type as CreatableTrackType);
+      const spillType = creatableTypeForClipKind(found.clip.kind);
       const besideId =
         args.spillBesideTrackId &&
         tracks.some((t) => t.id === args.spillBesideTrackId)
@@ -610,6 +713,39 @@ export function moveClip(args: {
       const target = tracks.find((t) => t.id === args.targetTrackId);
       if (target && clipCanMoveToTrack(found.clip, found.track, target)) {
         targetTrackId = target.id;
+      } else if (
+        target &&
+        args.intentionalLaneMove &&
+        isSharedVisualClipKind(found.clip.kind) &&
+        isSharedVisualTrack(target.type)
+      ) {
+        // Wrong-type aim: other free same-type lane, else create beside the aim.
+        // Never treat the origin lane as a free scavenger target (exclude would
+        // make a no-op look like a successful cross-lane move).
+        const spillType = creatableTypeForClipKind(found.clip.kind);
+        const duration = found.clip.durationMs;
+        let freeSameType: Track | undefined;
+        for (const t of tracks) {
+          if (!trackAcceptsClipKind(t.type, found.clip.kind)) continue;
+          if (t.id === found.track.id) continue;
+          if (trackRangeIsFree(t, startMs, duration, found.clip.id)) {
+            freeSameType = t;
+            break;
+          }
+        }
+        if (freeSameType) {
+          targetTrackId = freeSameType.id;
+        } else {
+          const spill = ensureSpillTrackBeside(
+            tracks,
+            target.id,
+            spillType,
+            args.spillTrackId,
+          );
+          tracks = spill.tracks;
+          targetTrackId = spill.trackId;
+          usedSpillTrackId = spill.trackId;
+        }
       }
     }
   }
@@ -626,9 +762,9 @@ export function moveClip(args: {
       targetTrackId !== found.track.id;
 
     if (crossLane) {
-      // Aiming at a busy lane: open a stable spill beside the aimed track.
+      // Aiming at a busy compatible lane: open a stable spill beside it.
       const besideId = targetTrackId;
-      const spillType = spillTypeForAimedTrack(intended);
+      const spillType = creatableTypeForClipKind(found.clip.kind);
       const spill = ensureSpillTrackBeside(
         tracks,
         besideId,
@@ -640,14 +776,16 @@ export function moveClip(args: {
       usedSpillTrackId = spill.trackId;
       intended = tracks.find((t) => t.id === targetTrackId) ?? intended;
     } else {
-      const ensured = isVisualAvTrack(intended.type)
+      const isAv =
+        found.clip.kind === "video" || found.clip.kind === "image";
+      const ensured = isAv
         ? ensureVisualAvTrackForRange(tracks, startMs, durationMs, {
             preferredTrackId: targetTrackId,
             excludeClipId: found.clip.id,
           })
         : ensureTrackForRange(
             tracks,
-            intended.type as CreatableTrackType,
+            creatableTypeForClipKind(found.clip.kind),
             startMs,
             durationMs,
             {
@@ -659,6 +797,8 @@ export function moveClip(args: {
       targetTrackId = ensured.trackId;
       if (args.spillTrackId && targetTrackId === args.spillTrackId) {
         usedSpillTrackId = args.spillTrackId;
+      } else if (!args.tracks.some((t) => t.id === targetTrackId)) {
+        usedSpillTrackId = targetTrackId;
       }
     }
   }
@@ -1655,14 +1795,8 @@ export function pasteClips(args: {
       linkedClipId: undefined,
     };
 
-    const laneType = (preferred?.type ??
-      sourceTrack?.type ??
-      "video") as CreatableTrackType;
-    const useVisual =
-      isVisualAvTrack(laneType) ||
-      src.kind === "video" ||
-      src.kind === "image";
-    const ensured = useVisual
+    const isAv = src.kind === "video" || src.kind === "image";
+    const ensured = isAv
       ? ensureVisualAvTrackForRange(
           tracks,
           pasted.startMs,
@@ -1671,7 +1805,7 @@ export function pasteClips(args: {
         )
       : ensureTrackForRange(
           tracks,
-          laneType,
+          creatableTypeForClipKind(src.kind),
           pasted.startMs,
           pasted.durationMs,
           { preferredTrackId: preferred?.id },

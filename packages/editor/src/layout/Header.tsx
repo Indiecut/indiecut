@@ -21,10 +21,14 @@ function formatAutosaveTime(iso: string | null): string {
 
 export function Header() {
   const title = useEditorStore((s) => s.project.title);
+  const projectPath = useEditorStore((s) => s.project.projectPath);
   const lastSavedAt = useEditorStore((s) => s.lastSavedAt);
   const setSettingsOpen = useEditorStore((s) => s.setSettingsOpen);
   const setExportOpen = useEditorStore((s) => s.setExportOpen);
   const setShortcutsOpen = useEditorStore((s) => s.setShortcutsOpen);
+  const setDeleteProjectDialogOpen = useEditorStore(
+    (s) => s.setDeleteProjectDialogOpen,
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -120,6 +124,19 @@ export function Header() {
               >
                 Open…
               </button>
+              {projectPath ? (
+                <button
+                  type="button"
+                  className="app-header__dropdown-item app-header__dropdown-item--danger"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setDeleteProjectDialogOpen(true);
+                  }}
+                >
+                  Delete project…
+                </button>
+              ) : null}
               {recents.length > 0 ? (
                 <>
                   <div className="app-header__dropdown-sep" />

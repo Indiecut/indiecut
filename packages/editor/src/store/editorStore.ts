@@ -129,6 +129,11 @@ export type EditorState = {
   settingsOpen: boolean;
   /** `create` = New project flow; Cancel must not wipe the open project. */
   projectSettingsMode: "edit" | "create";
+  /** Prompt when an action needs an open project (import, SFX, …). */
+  needProjectDialogOpen: boolean;
+  needProjectDialogMessage: string;
+  /** Confirm permanently deleting the open project. */
+  deleteProjectDialogOpen: boolean;
   exportOpen: boolean;
   /**
    * Export modal session (UI-only). Survives mediaIndex churn / sleep wake so
@@ -279,6 +284,8 @@ export type EditorState = {
   setAssetTab: (tab: AssetTab) => void;
   setLastSavedAt: (iso: string | null) => void;
   setSettingsOpen: (open: boolean, mode?: "edit" | "create") => void;
+  setNeedProjectDialogOpen: (open: boolean, message?: string) => void;
+  setDeleteProjectDialogOpen: (open: boolean) => void;
   setExportOpen: (open: boolean) => void;
   setExportPhase: (phase: ExportUiPhase) => void;
   setExportProgress: (progress: ExportProgress | null) => void;
@@ -348,6 +355,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   lastSavedAt: null,
   settingsOpen: false,
   projectSettingsMode: "edit",
+  needProjectDialogOpen: false,
+  needProjectDialogMessage:
+    "Open or create a project before continuing.",
+  deleteProjectDialogOpen: false,
   exportOpen: false,
   exportPhase: "settings",
   exportProgress: null,
@@ -1020,6 +1031,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       settingsOpen: open,
       projectSettingsMode: open ? mode : "edit",
     }),
+  setNeedProjectDialogOpen: (open, message) =>
+    set({
+      needProjectDialogOpen: open,
+      ...(message
+        ? { needProjectDialogMessage: message }
+        : open
+          ? {}
+          : {
+              needProjectDialogMessage:
+                "Open or create a project before continuing.",
+            }),
+    }),
+  setDeleteProjectDialogOpen: (open) =>
+    set({ deleteProjectDialogOpen: open }),
   setExportOpen: (open) => set({ exportOpen: open }),
   setExportPhase: (phase) => set({ exportPhase: phase }),
   setExportProgress: (progress) => set({ exportProgress: progress }),

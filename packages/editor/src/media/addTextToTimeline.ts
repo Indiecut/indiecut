@@ -1,6 +1,10 @@
 import { defaultAnimatableTransform } from "../engine/animatable";
 import { snapMs, snapThresholdMs } from "../engine/snap";
-import { addClipToTrack, ensureTrackForRange } from "../engine/timelineOps";
+import {
+  addClipToTrack,
+  ensureTrackForRange,
+  isSharedVisualTrack,
+} from "../engine/timelineOps";
 import type { Clip, TextProps } from "../project/types";
 import { getEditorStore } from "../store/editorStore";
 import {
@@ -54,7 +58,7 @@ type PlaceTextClipOpts = {
 };
 
 /**
- * Shared placement: playhead (+ magnet), text-track spill, commit.
+ * Shared placement: playhead (+ magnet), type-locked text lane / spill, commit.
  */
 function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
   const store = getEditorStore();
@@ -65,7 +69,11 @@ function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
 
   if (opts.targetTrackId) {
     const candidate = tracks.find((t) => t.id === opts.targetTrackId);
-    if (candidate && !candidate.locked && candidate.type === "text") {
+    if (
+      candidate &&
+      !candidate.locked &&
+      isSharedVisualTrack(candidate.type)
+    ) {
       preferredTrackId = candidate.id;
     }
   }

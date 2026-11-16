@@ -119,6 +119,14 @@
   background: var(--bg-elevated);
 }
 
+.app-header__dropdown-item--danger {
+  color: #e57373;
+}
+
+.app-header__dropdown-item--danger:hover {
+  background: rgba(229, 115, 115, 0.12);
+}
+
 .app-header__dropdown-item--recent {
   gap: 2px;
 }

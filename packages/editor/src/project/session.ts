@@ -1,8 +1,10 @@
 import {
   getLastProjectPath,
   pushRecent,
+  removeRecent,
   setLastProjectPath,
 } from "../prefs/appPrefs";
+import { clearHistory } from "../engine/history";
 import { useEditorStore } from "../store/editorStore";
 import { createEmptyProject } from "./createProject";
 import { parseProjectJson, serializeProject } from "./persistence";
@@ -164,6 +166,80 @@ export async function prepareNewProjectFlow(): Promise<void> {
   } catch (err) {
     console.warn("Could not flush project before New project", err);
   }
+}
+
+/**
+ * Permanently delete the open project folder, drop it from recents, and reset
+ * the editor to an empty unsaved project.
+ */
+export async function deleteCurrentProject(): Promise<void> {
+  const bridge = requireBridge();
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+
+  const { project } = useEditorStore.getState();
+  const projectPath = project.projectPath?.trim();
+  if (!projectPath) {
+    throw new Error("No project is open.");
+  }
+  if (!bridge.fs.removeDirectory) {
+    throw new Error("Deleting projects is not supported on this platform.");
+  }
+
+  const root = projectPath.replace(/[/\\]+$/, "");
+  const jsonPath = `${root}/project.json`;
+  const hasProject = await bridge.fs.pathExists(jsonPath);
+  if (!hasProject) {
+    throw new Error("Project file not found in that folder.");
+  }
+
+  await bridge.fs.removeDirectory(root);
+  await removeRecent(projectPath);
+  await removeRecent(root);
+  const last = await getLastProjectPath();
+  if (last === projectPath || last === root) {
+    await setLastProjectPath(null);
+  }
+
+  useEditorStore.setState({
+    project: createEmptyProject(),
+    selectedClipId: null,
+    selectedClipIds: [],
+    selectedTrackId: null,
+    selectedTransitionId: null,
+    selectedMediaId: null,
+    selectedCaptionCueIds: [],
+    captionCueRangeAnchorId: null,
+    activeMaskId: null,
+    maskInspectorOpen: false,
+    removeBgEyedropperClipId: null,
+    selectedKeyframeCluster: null,
+    selectedTimelineKeyframe: null,
+    selectedEasingSegment: null,
+    expandedKeyframeClipId: null,
+    keyframeDrawerMode: "dope",
+    focusedAnimatablePath: null,
+    cropDialogOpen: false,
+    exportOpen: false,
+    settingsOpen: false,
+    deleteProjectDialogOpen: false,
+    needProjectDialogOpen: false,
+    lastSavedAt: null,
+    history: clearHistory(),
+    clipboard: [],
+    isPlaying: false,
+    shuttleRate: 0,
+  });
+}
+
+/** Open the need-project dialog when no project path is set. Returns true if ready. */
+export function ensureProjectOpen(message?: string): boolean {
+  const { project, setNeedProjectDialogOpen } = useEditorStore.getState();
+  if (project.projectPath) return true;
+  setNeedProjectDialogOpen(true, message);
+  return false;
 }
 
 export async function bootProjectSession(): Promise<void> {

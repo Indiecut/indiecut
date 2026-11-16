@@ -1,4 +1,5 @@
 import type { Clip, MediaAssetRef } from "../project/types";
+import { ensureProjectOpen } from "../project/session";
 import {
   findSoundEffect,
   soundEffectUrl,
@@ -66,7 +67,9 @@ export async function addSoundEffectToTimeline(
   const store = getEditorStore();
   const projectPath = store.project.projectPath;
   if (!projectPath) {
-    window.alert("Open or create a project before adding sound effects.");
+    ensureProjectOpen(
+      "Open or create a project before adding sound effects.",
+    );
     return null;
   }
 

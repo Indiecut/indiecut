@@ -45,6 +45,13 @@ export async function pushRecent(
   return next;
 }
 
+export async function removeRecent(path: string): Promise<RecentProject[]> {
+  const current = await getRecents();
+  const next = current.filter((r) => r.path !== path);
+  await prefs.setItem(RECENTS_KEY, next);
+  return next;
+}
+
 export async function getLastProjectPath(): Promise<string | null> {
   try {
     const value = await prefs.getItem<string>(LAST_PATH_KEY);

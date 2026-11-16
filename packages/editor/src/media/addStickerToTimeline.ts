@@ -1,6 +1,10 @@
 import { defaultAnimatableTransform } from "../engine/animatable";
 import { snapMs, snapThresholdMs } from "../engine/snap";
-import { addClipToTrack, ensureTrackForRange } from "../engine/timelineOps";
+import {
+  addClipToTrack,
+  ensureTrackForRange,
+  isSharedVisualTrack,
+} from "../engine/timelineOps";
 import type { Clip } from "../project/types";
 import { getEditorStore } from "../store/editorStore";
 import {
@@ -17,8 +21,8 @@ function newClipId(): string {
 }
 
 /**
- * Place a kinetic sticker on a sticker track at the playhead.
- * Overlapping ranges spill onto a new sticker track.
+ * Place a kinetic sticker on a sticker lane at the playhead.
+ * Overlapping / foreign-lane aims spill onto a new sticker lane beside the aim.
  */
 export async function addStickerToTimeline(
   stickerId: string,
@@ -42,7 +46,11 @@ function placeStickerEntry(
 
   if (targetTrackId) {
     const candidate = tracks.find((t) => t.id === targetTrackId);
-    if (candidate && !candidate.locked && candidate.type === "sticker") {
+    if (
+      candidate &&
+      !candidate.locked &&
+      isSharedVisualTrack(candidate.type)
+    ) {
       preferredTrackId = candidate.id;
     }
   }

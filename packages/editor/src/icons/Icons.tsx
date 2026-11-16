@@ -46,15 +46,35 @@ export function IconKeyboard({ size, className }: IconProps) {
   );
 }
 
-export function IconSettings({ size, className }: IconProps) {
+export function IconSettings({ size = 16, className }: IconProps) {
+  // 24 viewBox Lucide cog — keeps teeth readable when drawn at 16px.
   return (
-    <Svg size={size} className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
       <path
-        d="M8 1.75c.45 0 .8.1 1.05.35l.35 1.2c.28.08.54.2.78.35l1.2-.35c.35.2.65.5.85.85l-.35 1.2c.15.24.27.5.35.78l1.2.35c.25.25.35.6.35 1.05s-.1.8-.35 1.05l-1.2.35c-.08.28-.2.54-.35.78l.35 1.2c-.2.35-.5.65-.85.85l-1.2-.35a3.3 3.3 0 0 1-.78.35l-.35 1.2c-.25.25-.6.35-1.05.35s-.8-.1-1.05-.35l-.35-1.2a3.3 3.3 0 0 1-.78-.35l-1.2.35c-.35-.2-.65-.5-.85-.85l.35-1.2a3.3 3.3 0 0 1-.35-.78l-1.2-.35C1.85 8.8 1.75 8.45 1.75 8s.1-.8.35-1.05l1.2-.35c.08-.28.2-.54.35-.78l-.35-1.2c.2-.35.5-.65.85-.85l1.2.35c.24-.15.5-.27.78-.35l.35-1.2C7.2 1.85 7.55 1.75 8 1.75Z"
-        {...s}
+        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      <circle cx="8" cy="8" r="2" {...s} />
-    </Svg>
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -169,12 +189,29 @@ export function IconMute({ size, className }: IconProps) {
   );
 }
 
-export function IconSolo({ size, className }: IconProps) {
+/** Track solo — letter S (not a +) so it isn’t read as “add lane”. */
+export function IconSolo({ size = 16, className }: IconProps) {
   return (
-    <Svg size={size} className={className}>
-      <circle cx="8" cy="8" r="5.25" {...s} />
-      <path d="M8 4.75v6.5M5.5 8h5" {...s} />
-    </Svg>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      className={className}
+      aria-hidden
+    >
+      <text
+        x="8"
+        y="8.5"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="currentColor"
+        fontSize="11"
+        fontWeight="700"
+        fontFamily="system-ui, -apple-system, sans-serif"
+      >
+        S
+      </text>
+    </svg>
   );
 }
 

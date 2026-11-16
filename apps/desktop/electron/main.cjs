@@ -417,6 +417,19 @@ handle("fs:unlink", async (_event, filePath) => {
   }
 });
 
+handle("fs:removeDirectory", async (_event, dirPath) => {
+  const target = assertString(dirPath, "directory path");
+  try {
+    await fs.rm(target, { recursive: true, force: true });
+    return { ok: true };
+  } catch (err) {
+    if (err && (err.code === "ENOENT" || err.code === "ENOTFOUND")) {
+      return { ok: true, missing: true };
+    }
+    throw err;
+  }
+});
+
 handle("fs:writeFile", async (_event, filePath, data, encoding) => {
   const target = assertString(filePath, "file path");
   await fs.mkdir(path.dirname(target), { recursive: true });

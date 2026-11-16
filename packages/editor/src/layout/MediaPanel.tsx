@@ -42,6 +42,7 @@ import {
   importMediaViaDialog,
 } from "../media/importMedia";
 import { useThumbUrl } from "../media/useThumbUrl";
+import { ensureProjectOpen } from "../project/session";
 import type { AssetTab, MediaAssetRef, MediaKind } from "../project/types";
 import {
   filterStickers,
@@ -174,8 +175,9 @@ export function MediaPanel() {
   );
 
   const runImport = useCallback(async () => {
-    if (!projectPath) {
-      window.alert("Open or create a project before importing media.");
+    if (
+      !ensureProjectOpen("Open or create a project before importing media.")
+    ) {
       return;
     }
     setImporting(true);
@@ -187,14 +189,15 @@ export function MediaPanel() {
     } finally {
       setImporting(false);
     }
-  }, [onProgress, projectPath]);
+  }, [onProgress]);
 
   const onDrop = useCallback(
     async (e: DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      if (!projectPath) {
-        window.alert("Open or create a project before importing media.");
+      if (
+        !ensureProjectOpen("Open or create a project before importing media.")
+      ) {
         return;
       }
       const files = e.dataTransfer.files;
@@ -208,7 +211,7 @@ export function MediaPanel() {
         setImporting(false);
       }
     },
-    [onProgress, projectPath],
+    [onProgress],
   );
 
   return (

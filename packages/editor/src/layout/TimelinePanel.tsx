@@ -47,11 +47,15 @@ import {
   canExtendClipLeft,
   canExtendClipRight,
   canFreezeFrameAt,
-  isVisualAvTrack,
+  clipCanMoveToTrack,
+  isSharedVisualClipKind,
+  isSharedVisualTrack,
   moveClip,
+  reorderTrack,
   reverseModeOf,
   setTrackFlags,
   splitClipAt,
+  trackCanReorder,
   trimClipEdge,
 } from "../engine/timelineOps";
 import {
@@ -259,38 +263,6 @@ function rectsIntersect(
   );
 }
 
-/** Whether a clip may be moved onto a destination track (type rules). */
-function clipCanRelaneTo(
-  clip: Clip,
-  from: Track,
-  to: Track,
-): boolean {
-  if (to.locked) return false;
-  const avOk =
-    isVisualAvTrack(from.type) &&
-    isVisualAvTrack(to.type) &&
-    (clip.kind === "video" || clip.kind === "image");
-  const textOk =
-    from.type === "text" && to.type === "text" && clip.kind === "text";
-  const captionOk =
-    from.type === "caption" &&
-    to.type === "caption" &&
-    clip.kind === "caption";
-  const stickerOk =
-    from.type === "sticker" &&
-    to.type === "sticker" &&
-    clip.kind === "sticker";
-  const effectOk =
-    from.type === "effect" && to.type === "effect" && clip.kind === "effect";
-  const filterOk =
-    from.type === "filter" && to.type === "filter" && clip.kind === "filter";
-  const audioOk =
-    from.type === "audio" && to.type === "audio" && clip.kind === "audio";
-  return (
-    avOk || textOk || captionOk || stickerOk || effectOk || filterOk || audioOk
-  );
-}
-
 export function TimelinePanel() {
   const tracks = useEditorStore((s) => s.project.tracks);
   const playheadMs = useEditorStore((s) => s.project.playheadMs);
@@ -345,6 +317,8 @@ export function TimelinePanel() {
   const lanesHRef = useRef<HTMLDivElement>(null);
   const lanesInnerRef = useRef<HTMLDivElement>(null);
   const headersScrollRef = useRef<HTMLDivElement>(null);
+  const headersInnerRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const rulerScrollRef = useRef<HTMLDivElement>(null);
   const rulerInnerRef = useRef<HTMLDivElement>(null);
   const syncingScrollRef = useRef(false);
@@ -356,6 +330,14 @@ export function TimelinePanel() {
     clientX: number;
     clientY: number;
   } | null>(null);
+  const trackReorderRef = useRef<{
+    trackId: string;
+    fromIndex: number;
+    pointerId: number;
+    originClientY: number;
+    active: boolean;
+    insertIndex: number;
+  } | null>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(800);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
@@ -363,6 +345,14 @@ export function TimelinePanel() {
   const [freezeBusy, setFreezeBusy] = useState(false);
   const [extractBusy, setExtractBusy] = useState(false);
   const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
+  /** Drop line while reordering a track via the type-icon grip. */
+  const [trackReorderUi, setTrackReorderUi] = useState<{
+    trackId: string;
+    /** Index in the post-removal array where the track would land. */
+    insertIndex: number;
+    /** Workspace-relative Y for the drop line. */
+    lineTopPx: number;
+  } | null>(null);
 
   const selected = selectedClipId ? findClip(tracks, selectedClipId) : null;
   const canCrop =
@@ -745,7 +735,10 @@ export function TimelinePanel() {
           const hover = origin.find((t) => t.id === hoverTrackId);
           if (
             hover &&
-            clipCanRelaneTo(originClip.c, originClip.t, hover)
+            (clipCanMoveToTrack(originClip.c, originClip.t, hover) ||
+              // Foreign visual lane: aim so moveClip can spill a same-type lane.
+              (isSharedVisualClipKind(originClip.c.kind) &&
+                isSharedVisualTrack(hover.type)))
           ) {
             targetTrackId = hoverTrackId;
             intentionalLaneMove = hoverTrackId !== originClip.t.id;
@@ -1070,6 +1063,157 @@ export function TimelinePanel() {
   };
 
   /**
+   * Map pointer Y to an insert index among current tracks (after removing the
+   * dragged row), plus a workspace-relative Y for the drop line.
+   * Insert index is clamped below captions and above the first audio lane.
+   */
+  const trackReorderTargetAtClientY = useCallback(
+    (
+      clientY: number,
+      fromIndex: number,
+      currentTracks: Track[],
+    ): { insertIndex: number; lineTopPx: number } | null => {
+      const headersInner = headersInnerRef.current;
+      const workspace = workspaceRef.current;
+      if (!headersInner || !workspace) return null;
+      const rows = headersInner.querySelectorAll<HTMLElement>(
+        "[data-track-header-id]",
+      );
+      if (rows.length === 0) return null;
+
+      const without = [
+        ...currentTracks.slice(0, fromIndex),
+        ...currentTracks.slice(fromIndex + 1),
+      ];
+      let minInsert = 0;
+      while (
+        minInsert < without.length &&
+        without[minInsert]!.type === "caption"
+      ) {
+        minInsert++;
+      }
+      let maxInsert = without.findIndex((t) => t.type === "audio");
+      if (maxInsert < 0) maxInsert = without.length;
+
+      const workspaceTop = workspace.getBoundingClientRect().top;
+      type Boundary = { insertIndex: number; clientY: number };
+      const boundaries: Boundary[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const rect = rows[i]!.getBoundingClientRect();
+        // insertIndex is in the post-removal array.
+        const insertIndex = i > fromIndex ? i - 1 : i;
+        if (insertIndex < minInsert || insertIndex > maxInsert) continue;
+        boundaries.push({ insertIndex, clientY: rect.top });
+      }
+      const lastRect = rows[rows.length - 1]!.getBoundingClientRect();
+      const endInsert = rows.length > fromIndex ? rows.length - 1 : rows.length;
+      if (endInsert >= minInsert && endInsert <= maxInsert) {
+        boundaries.push({ insertIndex: endInsert, clientY: lastRect.bottom });
+      }
+
+      // Prefer the top of the first audio row as the max boundary when present.
+      const firstAudioRowIdx = currentTracks.findIndex(
+        (t) => t.type === "audio",
+      );
+      if (
+        firstAudioRowIdx >= 0 &&
+        maxInsert >= minInsert &&
+        maxInsert <= without.length
+      ) {
+        const audioRow = rows[firstAudioRowIdx];
+        if (audioRow) {
+          boundaries.push({
+            insertIndex: maxInsert,
+            clientY: audioRow.getBoundingClientRect().top,
+          });
+        }
+      }
+
+      if (boundaries.length === 0) return null;
+
+      let best = boundaries[0]!;
+      let bestDist = Math.abs(clientY - best.clientY);
+      for (let i = 1; i < boundaries.length; i++) {
+        const b = boundaries[i]!;
+        const dist = Math.abs(clientY - b.clientY);
+        if (dist < bestDist) {
+          best = b;
+          bestDist = dist;
+        }
+      }
+      return {
+        insertIndex: best.insertIndex,
+        lineTopPx: best.clientY - workspaceTop,
+      };
+    },
+    [],
+  );
+
+  const endTrackReorder = useCallback((commit: boolean) => {
+    const drag = trackReorderRef.current;
+    trackReorderRef.current = null;
+    setTrackReorderUi(null);
+    if (!commit || !drag?.active) return;
+    const current = useEditorStore.getState().project.tracks;
+    const next = reorderTrack(current, drag.trackId, drag.insertIndex);
+    if (next) commitTracks(next, "Reorder track");
+  }, [commitTracks]);
+
+  const onTrackReorderPointerDown = (
+    e: ReactPointerEvent<HTMLElement>,
+    track: Track,
+    fromIndex: number,
+  ) => {
+    if (e.button !== 0) return;
+    if (!trackCanReorder(track.type) || track.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    trackReorderRef.current = {
+      trackId: track.id,
+      fromIndex,
+      pointerId: e.pointerId,
+      originClientY: e.clientY,
+      active: false,
+      insertIndex: fromIndex,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onTrackReorderPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const drag = trackReorderRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    if (!drag.active) {
+      if (Math.abs(e.clientY - drag.originClientY) < MOVE_THRESHOLD_PX) return;
+      drag.active = true;
+    }
+    const current = useEditorStore.getState().project.tracks;
+    const target = trackReorderTargetAtClientY(
+      e.clientY,
+      drag.fromIndex,
+      current,
+    );
+    if (!target) return;
+    drag.insertIndex = target.insertIndex;
+    setTrackReorderUi({
+      trackId: drag.trackId,
+      insertIndex: target.insertIndex,
+      lineTopPx: target.lineTopPx,
+    });
+  };
+
+  const onTrackReorderPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    const drag = trackReorderRef.current;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    endTrackReorder(true);
+  };
+
+  /**
    * Nearest clip-bar lane under client Y (ignores keyframe drawer height).
    * Always returns the closest lane so cross-lane aiming stays snappy at edges.
    */
@@ -1216,7 +1360,14 @@ export function TimelinePanel() {
         </div>
       </div>
 
-      <div className="timeline-panel__workspace">
+      <div ref={workspaceRef} className="timeline-panel__workspace">
+        {trackReorderUi && (
+          <div
+            className="timeline-panel__track-drop-line"
+            style={{ top: trackReorderUi.lineTopPx }}
+            aria-hidden
+          />
+        )}
         <div className="timeline-panel__corner" aria-hidden />
 
         <div
@@ -1278,8 +1429,8 @@ export function TimelinePanel() {
           className="timeline-panel__headers"
           onScroll={onHeadersScroll}
         >
-          <div className="timeline-panel__headers-inner">
-            {tracks.map((track) => {
+          <div ref={headersInnerRef} className="timeline-panel__headers-inner">
+            {tracks.map((track, trackIndex) => {
               const TypeIcon = TRACK_TYPE_ICON[track.type];
               const compact = isCompactTrack(track.type);
               const expandedClip = track.clips.find(
@@ -1289,13 +1440,21 @@ export function TimelinePanel() {
                 ? keyframeDrawerExtraHeight(expandedClip, keyframeDrawerMode)
                 : 0;
               const baseH = compact ? LANE_COMPACT_HEIGHT : LANE_BASE_HEIGHT;
+              const canDragReorder =
+                trackCanReorder(track.type) && !track.locked;
+              const reordering =
+                trackReorderUi?.trackId === track.id;
               return (
                 <div
                   key={track.id}
+                  data-track-header-id={track.id}
                   className={[
                     "timeline-panel__track-header",
                     compact ? "timeline-panel__track-header--compact" : "",
                     track.locked ? "timeline-panel__track-header--locked" : "",
+                    reordering
+                      ? "timeline-panel__track-header--reordering"
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
@@ -1308,9 +1467,42 @@ export function TimelinePanel() {
                 >
                   <div className="timeline-panel__track-header-row">
                     <span
-                      className="timeline-panel__track-type"
+                      className={[
+                        "timeline-panel__track-type",
+                        canDragReorder
+                          ? "timeline-panel__track-type--grip"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={{ color: TRACK_SWATCH[track.type] }}
-                      aria-label={TRACK_LABEL[track.type]}
+                      aria-label={
+                        canDragReorder
+                          ? `${TRACK_LABEL[track.type]} — drag to reorder`
+                          : TRACK_LABEL[track.type]
+                      }
+                      title={
+                        canDragReorder ? "Drag to reorder" : undefined
+                      }
+                      onPointerDown={
+                        canDragReorder
+                          ? (e) =>
+                              onTrackReorderPointerDown(e, track, trackIndex)
+                          : undefined
+                      }
+                      onPointerMove={
+                        canDragReorder
+                          ? onTrackReorderPointerMove
+                          : undefined
+                      }
+                      onPointerUp={
+                        canDragReorder ? onTrackReorderPointerUp : undefined
+                      }
+                      onPointerCancel={
+                        canDragReorder
+                          ? () => endTrackReorder(false)
+                          : undefined
+                      }
                     >
                       <TypeIcon size={14} />
                     </span>

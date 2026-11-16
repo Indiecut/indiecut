@@ -38,6 +38,10 @@ export interface IndieCutFsBridge {
   copyFile: (sourcePath: string, destPath: string) => Promise<string>;
   readFile: (filePath: string) => Promise<Uint8Array>;
   unlink: (filePath: string) => Promise<{ ok: boolean; missing?: boolean }>;
+  /** Recursively delete a directory (project folder). Missing path is ok. */
+  removeDirectory: (
+    dirPath: string,
+  ) => Promise<{ ok: boolean; missing?: boolean }>;
   writeFile: (
     filePath: string,
     data: Uint8Array | ArrayBuffer | string,

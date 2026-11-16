@@ -4,6 +4,7 @@ import {
   addClipToTrack,
   ensureTrackForRange,
   ensureVisualAvTrackForRange,
+  isVisualAvTrack,
 } from "../engine/timelineOps";
 import type { Clip, ClipKind, MediaAssetRef, Track } from "../project/types";
 import { getEditorStore } from "../store/editorStore";
@@ -20,8 +21,8 @@ function clipKindFor(asset: MediaAssetRef): ClipKind {
 
 function trackAcceptsAsset(track: Track, asset: MediaAssetRef): boolean {
   if (asset.kind === "audio") return track.type === "audio";
-  // video / image → video or overlay
-  return track.type === "video" || track.type === "overlay";
+  // video / image → video or overlay only
+  return isVisualAvTrack(track.type);
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   pathExists,
   readFileBytes,
   uniqueProjectPath,
+  removeDirectory,
   unlinkPath,
   writeFileBytes,
 } from "./opfs";
@@ -190,6 +191,18 @@ async function unlinkAny(
   return unlinkPath(filePath);
 }
 
+async function removeDirectoryAny(
+  dirPath: string,
+): Promise<{ ok: boolean; missing?: boolean }> {
+  if (isBlobPath(dirPath)) {
+    throw new Error("Cannot remove a blob path as a directory");
+  }
+  if (!isOpfsPath(dirPath)) {
+    throw new Error(`Unsupported path: ${dirPath}`);
+  }
+  return removeDirectory(dirPath);
+}
+
 function resolveUnderProject(projectPath: string, relativePath: string): string {
   const root = normalizeOpfsPath(projectPath).replace(/\/+$/, "");
   const rel = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
@@ -246,6 +259,7 @@ export function createWebPlatform(): IndieCutBridge {
       copyFile: copyAny,
       readFile: readAnyFile,
       unlink: unlinkAny,
+      removeDirectory: removeDirectoryAny,
       writeFile: writeAnyFile,
       writeProjectFile: async (projectPath, relativePath, data, encoding) => {
         const target = resolveUnderProject(projectPath, relativePath);

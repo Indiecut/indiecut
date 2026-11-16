@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("indiecut", {
       ipcRenderer.invoke("fs:copyFile", sourcePath, destPath),
     readFile: (filePath) => ipcRenderer.invoke("fs:readFile", filePath),
     unlink: (filePath) => ipcRenderer.invoke("fs:unlink", filePath),
+    removeDirectory: (dirPath) =>
+      ipcRenderer.invoke("fs:removeDirectory", dirPath),
     writeFile: (filePath, data, encoding) =>
       ipcRenderer.invoke("fs:writeFile", filePath, data, encoding),
     writeProjectFile: (projectPath, relativePath, data, encoding) =>

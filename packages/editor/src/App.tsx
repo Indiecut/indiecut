@@ -3,7 +3,9 @@ import { tryRestoreExportUi } from "./export/exportUiSession";
 import { ensureTextFontsLoaded } from "./fonts/registry";
 import { AppShell } from "./layout/AppShell";
 import { CropDialog } from "./layout/CropDialog";
+import { DeleteProjectDialog } from "./layout/DeleteProjectDialog";
 import { ExportModal } from "./layout/ExportModal";
+import { NeedProjectDialog } from "./layout/NeedProjectDialog";
 import { ProjectSettingsModal } from "./layout/ProjectSettingsModal";
 import { ShortcutsPanel } from "./layout/ShortcutsPanel";
 import { bootProjectSession } from "./project/session";
@@ -79,6 +81,8 @@ export default function App() {
     <>
       <AppShell />
       <ProjectSettingsModal />
+      <NeedProjectDialog />
+      <DeleteProjectDialog />
       <ExportModal />
       <CropDialog />
       <ShortcutsPanel />

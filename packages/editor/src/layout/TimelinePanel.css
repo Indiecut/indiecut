@@ -69,6 +69,7 @@
 }
 
 .timeline-panel__workspace {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -77,6 +78,20 @@
   grid-template-areas:
     "corner ruler"
     "headers lanes";
+}
+
+.timeline-panel__track-drop-line {
+  position: absolute;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(94, 200, 255, 0.7);
+  z-index: 20;
+  pointer-events: none;
 }
 
 .timeline-panel__corner {
@@ -167,6 +182,25 @@
 
 .timeline-panel__track-type svg {
   display: block;
+}
+
+.timeline-panel__track-type--grip {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-panel__track-type--grip:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.timeline-panel__track-type--grip:active,
+.timeline-panel__track-header--reordering .timeline-panel__track-type--grip {
+  cursor: grabbing;
+}
+
+.timeline-panel__track-header--reordering {
+  opacity: 0.45;
 }
 
 .timeline-panel__track-flags {

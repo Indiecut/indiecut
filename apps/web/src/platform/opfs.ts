@@ -124,6 +124,20 @@ export async function unlinkPath(
   }
 }
 
+export async function removeDirectory(
+  dirPath: string,
+): Promise<{ ok: boolean; missing?: boolean }> {
+  try {
+    const { parent, name } = await resolveParentAndName(dirPath, false);
+    await parent.removeEntry(name, { recursive: true });
+    return { ok: true };
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : "";
+    if (name === "NotFoundError") return { ok: true, missing: true };
+    throw err;
+  }
+}
+
 export async function copyFile(
   sourcePath: string,
   destPath: string,
