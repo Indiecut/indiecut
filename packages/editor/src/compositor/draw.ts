@@ -339,6 +339,12 @@ function blit(
   // Opt-in 3D plane: only bake when the user has actually tilted/pushed the
   // plane. Identity (0,0,0 / z=0) keeps the normal 2D blit so Enable 3D alone
   // does not change the look.
+  //
+  // Bake in *layout* pixels (not stage). Preview stage size/aspect and export
+  // resolution used to feed different dstW/dstH into the same perspective math
+  // while z/perspective stayed in layout units — so tilt looked different in
+  // preview vs export. Layout-space bake + scale to stage keeps geometry identical.
+  // Fit is forced to contain so preview "Full" (cover) cannot diverge from export.
   if (transform3d?.enabled) {
     const hasTilt =
       Math.abs(transform3d.rotateX) > 1e-3 ||
@@ -346,15 +352,17 @@ function blit(
       Math.abs(transform3d.rotateZ) > 1e-3 ||
       Math.abs(transform3d.z) > 1e-3;
     if (hasTilt) {
+      const bakeW = Math.max(1, Math.round(layoutW));
+      const bakeH = Math.max(1, Math.round(layoutH));
       const baked = bakePlane3D({
         source: drawSource,
         srcW: drawW,
         srcH: drawH,
-        dstW,
-        dstH,
-        layoutW,
-        layoutH,
-        fit,
+        dstW: bakeW,
+        dstH: bakeH,
+        layoutW: bakeW,
+        layoutH: bakeH,
+        fit: "contain",
         transform,
         transform3d,
         placement,
@@ -372,7 +380,7 @@ function blit(
         g.globalCompositeOperation = blendModeToCompositeOperation(mode);
         g.globalAlpha = mode === "normal" ? alpha : 1;
         g.setTransform(1, 0, 0, 1, 0, 0);
-        g.drawImage(baked.canvas, 0, 0);
+        g.drawImage(baked.canvas, 0, 0, bakeW, bakeH, 0, 0, dstW, dstH);
         g.restore();
         return;
       }

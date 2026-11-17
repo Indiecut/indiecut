@@ -21,7 +21,6 @@ import { TransformFields } from "./TransformFields";
 type Props = {
   clip: Clip;
   track: Track;
-  stickerName?: string;
 };
 
 type StickerTab = "Primary" | "Color" | "Animation" | "3D";
@@ -32,7 +31,7 @@ const BACKING_OPTIONS: { id: KineticBacking; label: string }[] = [
   { id: "glow", label: "Glow" },
 ];
 
-export function StickerBasicPanel({ clip, track, stickerName }: Props) {
+export function StickerBasicPanel({ clip, track }: Props) {
   const [tab, setTab] = useState<StickerTab>("Primary");
   const updateClip = useEditorStore((s) => s.updateClip);
   const locked = track.locked;
@@ -197,18 +196,11 @@ export function StickerBasicPanel({ clip, track, stickerName }: Props) {
             </button>
           </section>
         ) : (
-          <>
-            {stickerName ? (
-              <p className="inspector-panel__hint" style={{ marginTop: 8 }}>
-                {stickerName}
-              </p>
-            ) : null}
-            <TransformFields
-              clip={clip}
-              locked={track.locked}
-              maxScalePercent={1200}
-            />
-          </>
+          <TransformFields
+            clip={clip}
+            locked={track.locked}
+            maxScalePercent={1200}
+          />
         )}
       </div>
     </div>

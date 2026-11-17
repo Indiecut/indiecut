@@ -351,7 +351,7 @@ function StickerInspector({ clip, track }: { clip: Clip; track: Track }) {
         <h2 className="inspector-panel__title">{name}</h2>
       </div>
       <div className="inspector-panel__body inspector-panel__body--flush">
-        <StickerBasicPanel clip={clip} track={track} stickerName={name} />
+        <StickerBasicPanel clip={clip} track={track} />
       </div>
     </div>
   );

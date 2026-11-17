@@ -1,9 +1,14 @@
 /**
- * Opt-in 3D plane bake — textured quad with perspective into a stage-sized canvas.
+ * Opt-in 3D plane bake — textured quad with perspective into a canvas.
  * Used by preview/export blit when clip.transform3d.enabled.
  *
+ * Callers should pass dstW/dstH === layoutW/layoutH (layout pixels) and scale
+ * the result onto the stage. Baking in stage pixels made preview (panel size /
+ * aspect / cover fit) diverge from export because XY were stage-scaled while
+ * z/perspective stayed in layout units.
+ *
  * Coordinate system (eye space):
- * - XY in stage pixels, origin at frame center
+ * - XY in the bake canvas pixels, origin at frame center
  * - +Y up (canvas Y is flipped when building the model)
  * - +Z toward camera; plane rests at z=0
  * - Camera at z = +perspective; w = perspective - z

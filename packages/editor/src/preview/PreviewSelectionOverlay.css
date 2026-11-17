@@ -5,14 +5,27 @@
   z-index: 2;
 }
 
+/* Full-stage hit target for click-to-select (under the box; handles sit above). */
+.preview-selection__pick-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+  z-index: 0;
+}
+
 .preview-selection__box {
   position: absolute;
   box-sizing: border-box;
   border: 1.5px solid #ffffff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  pointer-events: auto;
+  /* Visual only — move/select goes through pick-layer hit-test so full-frame
+     selection cannot block higher layers. Handles keep pointer-events. */
+  pointer-events: none;
   cursor: move;
   touch-action: none;
+  z-index: 1;
 }
 
 .preview-selection__handle {

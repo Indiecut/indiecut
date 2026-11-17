@@ -9,34 +9,27 @@ import {
 import { CAPTION_CUSTOM_PRESET_ID } from "../ai/captions/captionStylePresets";
 import {
   activeCaptionCue,
-  resolveCaptionCueLayoutX,
-  resolveCaptionCueLayoutY,
   resolveCaptionCueOffsetX,
   resolveCaptionCueOffsetY,
   resolveCaptionCueStyle,
   resolveCaptionTextAtLocalMs,
 } from "../ai/captions/resolveCaptionText";
-import { effectiveSourceSize } from "../compositor/crop";
-import { measureTextSize } from "../compositor/rasterizeText";
-import { ANIMATED_TEXT_OVERFLOW_PAD } from "../compositor/textUnits";
-import { hasActiveTextAnimation } from "../engine/textAnimation";
 import { ensureTextFontsLoaded } from "../fonts/registry";
-import { computeFittedRect } from "../compositor/transform";
+import { subscribePreviewTextLayouts } from "./previewWorkerClient";
 import {
-  getPreviewTextLayout,
-  subscribePreviewTextLayouts,
-} from "./previewWorkerClient";
+  contentSizeForClip,
+  pickClipAtStagePoint,
+  stageGeometryForClip,
+} from "./previewHitTest";
 import {
-  evaluateClipTransform,
   patchClipTransformValues,
   type ResolvedTransform,
 } from "../engine/animatable";
 import { clipLocalMs } from "../engine/time";
-import type { CaptionCue, CaptionProps, Clip, TextProps, TextAnimationParams } from "../project/types";
+import type { CaptionCue, CaptionProps, Clip } from "../project/types";
 import { findClip, useEditorStore } from "../store/editorStore";
 import "./PreviewSelectionOverlay.css";
 
-const STICKER_NATIVE = 256;
 const ROTATE_GAP_PX = 28;
 const MIN_CAPTION_FONT = 12;
 const MAX_CAPTION_FONT = 200;
@@ -154,37 +147,10 @@ type Props = {
 };
 
 /**
- * Selection chrome for overlays on the preview stage.
+ * Selection chrome + click-to-select on the preview stage.
  * Text/sticker use native layout size; video/image use fitted frame size.
  * HTML overlay (not drawn into OffscreenCanvas) so handles stay interactive.
  */
-
-/**
- * Selection bounds for text/captions.
- * - Matches compositor measure (document canvas + loaded faces).
- * - Adds a small stroke/join safety so normal (non-animated) subtitles
- *   aren't clipped by the handles.
- * - Animated layers also include the compositor overflow pad.
- */
-function measureSelectionTextSize(
-  props: TextProps,
-  animation?: TextAnimationParams | null,
-): { width: number; height: number } | null {
-  const base = measureTextSize(props);
-  if (!base) return null;
-  const stroke = Math.max(0, props.strokeWidth ?? 0);
-  // Round lineJoin + bold faces can ink past advance metrics a little.
-  const safety = Math.max(2, Math.ceil(stroke * 0.75));
-  let width = base.width + safety * 2;
-  let height = base.height + safety * 2;
-  if (hasActiveTextAnimation(animation)) {
-    const pad = ANIMATED_TEXT_OVERFLOW_PAD;
-    width += pad * 2;
-    height += pad * 2;
-  }
-  return { width, height };
-}
-
 export function PreviewSelectionOverlay({ stageRef }: Props) {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const selectedCaptionCueIds = useEditorStore((s) => s.selectedCaptionCueIds);
@@ -196,10 +162,17 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
   const fps = useEditorStore((s) => s.project.fps);
   const isPlaying = useEditorStore((s) => s.isPlaying);
   const previewFitMode = useEditorStore((s) => s.previewFitMode);
+  const removeBgEyedropperClipId = useEditorStore(
+    (s) => s.removeBgEyedropperClipId,
+  );
   const patchClipLive = useEditorStore((s) => s.patchClipLive);
   const commitTracksTransition = useEditorStore(
     (s) => s.commitTracksTransition,
   );
+  const selectClip = useEditorStore((s) => s.selectClip);
+  const toggleClipSelection = useEditorStore((s) => s.toggleClipSelection);
+  const selectCaptionCue = useEditorStore((s) => s.selectCaptionCue);
+  const clearSelection = useEditorStore((s) => s.clearSelection);
 
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
   const [fontsEpoch, setFontsEpoch] = useState(0);
@@ -288,54 +261,17 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
 
   const contentSize = useMemo(() => {
     if (!overlayClip) return null;
-    if (overlayClip.kind === "sticker") {
-      return { width: STICKER_NATIVE, height: STICKER_NATIVE };
-    }
-    if (overlayClip.kind === "text") {
-      // Prefer the worker's blit size so the box matches preview pixels.
-      const fromWorker = getPreviewTextLayout(overlayClip.id);
-      if (fromWorker) return fromWorker;
-      return measureSelectionTextSize(
-        overlayClip.text ?? { content: "Text" },
-        overlayClip.animation,
-      );
-    }
-    if (overlayClip.kind === "caption") {
-      const local = clipLocalMs(playheadMs, overlayClip);
-      if (local === null) return { width: 120, height: 36 };
-      const text = resolveCaptionTextAtLocalMs(overlayClip, local);
-      const cue = overlayClip.caption
-        ? activeCaptionCue(
-            overlayClip.caption.cues,
-            local,
-            overlayClip.caption.speed,
-          )
-        : null;
-      const textKey = cue
-        ? `${overlayClip.id}:${cue.id}`
-        : overlayClip.id;
-      const fromWorker = getPreviewTextLayout(textKey);
-      if (fromWorker) return fromWorker;
-      return measureSelectionTextSize(
-        text ?? { content: "Captions" },
-        cue?.animation,
-      );
-    }
-    // video / image — fitted rect in layout pixels (matches compositor)
-    const media = mediaIndex.find((m) => m.id === overlayClip.mediaId);
-    const rawW = media?.width && media.width > 0 ? media.width : layoutW;
-    const rawH = media?.height && media.height > 0 ? media.height : layoutH;
-    const eff = effectiveSourceSize(rawW, rawH, overlayClip.crop);
-    const fit = previewFitMode === "full" ? "cover" : "contain";
-    const fitted = computeFittedRect(
-      eff.width,
-      eff.height,
+    // fontsEpoch / textLayoutEpoch invalidate when faces or worker layouts change.
+    void fontsEpoch;
+    void textLayoutEpoch;
+    return contentSizeForClip({
+      clip: overlayClip,
+      playheadMs,
+      mediaIndex,
       layoutW,
       layoutH,
-      fit,
-    );
-    if (!fitted) return { width: layoutW, height: layoutH };
-    return { width: fitted.drawW, height: fitted.drawH };
+      previewFitMode,
+    });
   }, [
     overlayClip,
     mediaIndex,
@@ -354,48 +290,16 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
   // v1: even when transform3d is enabled, handles use the 2D AABB
   // (position/scale). Orientation is edited in the inspector 3D tab.
   const geometry = useMemo(() => {
-    if (
-      !overlayClip ||
-      !contentSize ||
-      stageSize.w < 2 ||
-      stageSize.h < 2 ||
-      localMs === null
-    ) {
-      return null;
-    }
-    const t = evaluateClipTransform(overlayClip, localMs);
-    let layoutX = t.x;
-    let layoutY = t.y;
-    if (overlayClip.kind === "caption" && overlayClip.caption) {
-      const cue = activeCaptionCue(
-        overlayClip.caption.cues,
-        localMs,
-        overlayClip.caption.speed,
-      );
-      layoutX = resolveCaptionCueLayoutX(overlayClip.caption, cue, t.x);
-      layoutY = resolveCaptionCueLayoutY(
-        overlayClip.caption,
-        cue,
-        layoutH,
-      );
-    }
-    const resolved = { ...t, x: layoutX, y: layoutY };
-    const sx = stageSize.w / Math.max(1, layoutW);
-    const sy = stageSize.h / Math.max(1, layoutH);
-    const scaleX = t.uniformScale !== false ? t.scaleX : t.scaleX;
-    const scaleY = t.uniformScale !== false ? t.scaleX : t.scaleY;
-    const boxW = contentSize.width * scaleX * sx;
-    const boxH = contentSize.height * scaleY * sy;
-    const centerX = stageSize.w / 2 + resolved.x * sx;
-    const centerY = stageSize.h / 2 + resolved.y * sy;
-    return {
-      boxW,
-      boxH,
-      centerX,
-      centerY,
-      rotation: resolved.rotation,
-      transform: resolved,
-    };
+    if (!overlayClip || !contentSize || localMs === null) return null;
+    return stageGeometryForClip({
+      clip: overlayClip,
+      contentSize,
+      stageW: stageSize.w,
+      stageH: stageSize.h,
+      layoutW,
+      layoutH,
+      localMs,
+    });
   }, [overlayClip, contentSize, stageSize, layoutW, layoutH, localMs]);
 
   const applyTransform = useCallback(
@@ -590,69 +494,184 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
     };
   }, [endGesture, onPointerMove]);
 
-  if (!overlayClip || !geometry || isPlaying) return null;
-
-  const { boxW, boxH, centerX, centerY, rotation, transform } = geometry;
-
-  const startMove = (e: ReactPointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    beginGesture();
-    if (overlayClip.kind === "caption" && overlayClip.caption && localMs !== null) {
-      const cueIds = captionGestureCueIds(
-        overlayClip,
-        localMs,
-        selectedCaptionCueIds,
-      );
-      if (cueIds.length > 0) {
-        const startOffsetXByCueId: Record<string, number> = {};
-        const startOffsetYByCueId: Record<string, number> = {};
-        for (const id of cueIds) {
-          const cue = overlayClip.caption.cues.find((c) => c.id === id);
-          startOffsetXByCueId[id] = resolveCaptionCueOffsetX(
-            overlayClip.caption,
-            cue,
-            transform.x,
-          );
-          startOffsetYByCueId[id] = resolveCaptionCueOffsetY(
-            overlayClip.caption,
-            cue,
-          );
+  const beginMoveForClip = useCallback(
+    (
+      e: ReactPointerEvent,
+      clip: Clip,
+      transform: ResolvedTransform,
+      local: number,
+    ) => {
+      beginGesture();
+      if (clip.kind === "caption" && clip.caption) {
+        const cueIds = captionGestureCueIds(
+          clip,
+          local,
+          useEditorStore.getState().selectedCaptionCueIds,
+        );
+        if (cueIds.length > 0) {
+          const startOffsetXByCueId: Record<string, number> = {};
+          const startOffsetYByCueId: Record<string, number> = {};
+          for (const id of cueIds) {
+            const cue = clip.caption.cues.find((c) => c.id === id);
+            startOffsetXByCueId[id] = resolveCaptionCueOffsetX(
+              clip.caption,
+              cue,
+              transform.x,
+            );
+            startOffsetYByCueId[id] = resolveCaptionCueOffsetY(
+              clip.caption,
+              cue,
+            );
+          }
+          dragRef.current = {
+            kind: "caption-move",
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            cueIds,
+            startOffsetXByCueId,
+            startOffsetYByCueId,
+            before: { ...transform },
+          };
+          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+          return;
         }
-        dragRef.current = {
-          kind: "caption-move",
-          startClientX: e.clientX,
-          startClientY: e.clientY,
-          cueIds,
-          startOffsetXByCueId,
-          startOffsetYByCueId,
-          before: { ...transform },
-        };
-        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      }
+      dragRef.current = {
+        kind: "move",
+        originX: transform.x,
+        originY: transform.y,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        before: { ...transform },
+      };
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    [beginGesture],
+  );
+
+  const onPickPointerDown = useCallback(
+    (e: ReactPointerEvent) => {
+      if (e.button !== 0) return;
+      // Eyedropper sits above (z-index 6); skip pick while it owns sampling.
+      // Mask handles also sit above (z-index 3) with their own pointer-events —
+      // empty stage areas still pick / clear through this layer.
+      if (removeBgEyedropperClipId) return;
+      if (stageSize.w < 2 || stageSize.h < 2) return;
+
+      const stage = stageRef.current;
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const stageX = e.clientX - rect.left;
+      const stageY = e.clientY - rect.top;
+
+      const state = useEditorStore.getState();
+      const hit = pickClipAtStagePoint({
+        stageX,
+        stageY,
+        stageW: stageSize.w,
+        stageH: stageSize.h,
+        tracks: state.project.tracks,
+        mediaIndex: state.project.mediaIndex,
+        playheadMs: state.project.playheadMs,
+        layoutW: state.project.width,
+        layoutH: state.project.height,
+        fps: state.project.fps,
+        previewFitMode: state.previewFitMode,
+      });
+
+      const additive = e.metaKey || e.ctrlKey;
+
+      if (!hit) {
+        e.preventDefault();
+        if (!additive) clearSelection();
         return;
       }
-    }
-    dragRef.current = {
-      kind: "move",
-      originX: transform.x,
-      originY: transform.y,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      before: { ...transform },
-    };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const samePrimary = state.selectedClipId === hit.clip.id;
+
+      if (hit.clip.kind === "caption" && hit.cueId) {
+        if (additive) {
+          selectCaptionCue(hit.clip.id, hit.cueId, hit.trackId, "toggle");
+          return;
+        }
+        if (!samePrimary || !state.selectedCaptionCueIds.includes(hit.cueId)) {
+          selectCaptionCue(hit.clip.id, hit.cueId, hit.trackId, "replace");
+        }
+        // Same caption + cue → start move when not playing.
+        if (samePrimary && !isPlaying && geometry) {
+          const local = clipLocalMs(state.project.playheadMs, hit.clip);
+          if (local !== null) {
+            beginMoveForClip(e, hit.clip, geometry.transform, local);
+          }
+        }
+        return;
+      }
+
+      if (additive) {
+        toggleClipSelection(hit.clip.id, hit.trackId);
+        return;
+      }
+
+      if (!samePrimary) {
+        selectClip(hit.clip.id, hit.trackId);
+        return;
+      }
+
+      // Same selected clip → begin move (when chrome would allow it).
+      if (!isPlaying && geometry && overlayClip?.id === hit.clip.id) {
+        const local = clipLocalMs(state.project.playheadMs, hit.clip);
+        if (local !== null) {
+          beginMoveForClip(e, hit.clip, geometry.transform, local);
+        }
+      }
+    },
+    [
+      beginMoveForClip,
+      clearSelection,
+      geometry,
+      isPlaying,
+      overlayClip?.id,
+      removeBgEyedropperClipId,
+      selectCaptionCue,
+      selectClip,
+      stageRef,
+      stageSize.h,
+      stageSize.w,
+      toggleClipSelection,
+    ],
+  );
+
+  const showChrome = Boolean(overlayClip && geometry && !isPlaying);
+  const { boxW, boxH, centerX, centerY, rotation, transform } = geometry ?? {
+    boxW: 0,
+    boxH: 0,
+    centerX: 0,
+    centerY: 0,
+    rotation: 0,
+    transform: {
+      x: 0,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      uniformScale: true,
+    },
   };
 
   const startScale = (corner: Corner) => (e: ReactPointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (!overlayClip || !geometry || localMs === null) return;
     const stage = stageRef.current;
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
     const cx = rect.left + centerX;
     const cy = rect.top + centerY;
     beginGesture();
-    if (overlayClip.kind === "caption" && overlayClip.caption && localMs !== null) {
+    if (overlayClip.kind === "caption" && overlayClip.caption) {
       const cueIds = captionGestureCueIds(
         overlayClip,
         localMs,
@@ -673,7 +692,6 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
             Math.max(MIN_CAPTION_FONT, Math.round(base * bakeScale)),
           );
         }
-        // Fold clip-scale into cue fontSize so resize stays per-cue.
         if (bakeScale !== 1) {
           applyCaptionCuePatch(overlayClip, cueIds, (cue) => ({
             ...cue,
@@ -717,6 +735,7 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
   const startRotate = (e: ReactPointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (!geometry) return;
     const stage = stageRef.current;
     if (!stage) return;
     const rect = stage.getBoundingClientRect();
@@ -734,42 +753,47 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
   return (
     <div className="preview-selection" aria-hidden={false}>
       <div
-        className="preview-selection__box"
-        style={{
-          width: boxW,
-          height: boxH,
-          left: centerX,
-          top: centerY,
-          transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-        }}
-        onPointerDown={startMove}
-      >
-        <span
-          className="preview-selection__handle preview-selection__handle--nw"
-          onPointerDown={startScale("nw")}
-        />
-        <span
-          className="preview-selection__handle preview-selection__handle--ne"
-          onPointerDown={startScale("ne")}
-        />
-        <span
-          className="preview-selection__handle preview-selection__handle--sw"
-          onPointerDown={startScale("sw")}
-        />
-        <span
-          className="preview-selection__handle preview-selection__handle--se"
-          onPointerDown={startScale("se")}
-        />
-        <button
-          type="button"
-          className="preview-selection__rotate"
-          style={{ bottom: -(ROTATE_GAP_PX + 10) }}
-          aria-label="Rotate"
-          onPointerDown={startRotate}
+        className="preview-selection__pick-layer"
+        onPointerDown={onPickPointerDown}
+      />
+      {showChrome ? (
+        <div
+          className="preview-selection__box"
+          style={{
+            width: boxW,
+            height: boxH,
+            left: centerX,
+            top: centerY,
+            transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+          }}
         >
-          <RotateIcon />
-        </button>
-      </div>
+          <span
+            className="preview-selection__handle preview-selection__handle--nw"
+            onPointerDown={startScale("nw")}
+          />
+          <span
+            className="preview-selection__handle preview-selection__handle--ne"
+            onPointerDown={startScale("ne")}
+          />
+          <span
+            className="preview-selection__handle preview-selection__handle--sw"
+            onPointerDown={startScale("sw")}
+          />
+          <span
+            className="preview-selection__handle preview-selection__handle--se"
+            onPointerDown={startScale("se")}
+          />
+          <button
+            type="button"
+            className="preview-selection__rotate"
+            style={{ bottom: -(ROTATE_GAP_PX + 10) }}
+            aria-label="Rotate"
+            onPointerDown={startRotate}
+          >
+            <RotateIcon />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
