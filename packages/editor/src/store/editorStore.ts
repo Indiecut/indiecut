@@ -28,7 +28,7 @@ import {
   undo as historyUndo,
   type HistoryState,
 } from "../engine/history";
-import { pruneEmptyTracks } from "../engine/timelineOps";
+import { pruneEmptyTracks, rippleDeleteMany } from "../engine/timelineOps";
 import { clipLocalMs, timelineDurationMs } from "../engine/time";
 import type { ExportProgress, ExportSettings } from "../export/types";
 import { createEmptyProject } from "../project/createProject";
@@ -256,6 +256,8 @@ export type EditorState = {
   clearKeyframeSelection: () => void;
   upsertMediaAsset: (asset: MediaAssetRef) => void;
   patchMediaAsset: (assetId: string, patch: Partial<MediaAssetRef>) => void;
+  /** Remove media from the bin and any timeline clips that reference it. */
+  removeMediaAsset: (assetId: string) => boolean;
 
   selectClip: (clipId: string, trackId?: string) => void;
   /**
@@ -733,6 +735,90 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       m.id === assetId ? { ...m, ...patch } : m,
     );
     set({ project: touch({ ...project, mediaIndex }) });
+  },
+
+  removeMediaAsset: (assetId) => {
+    const state = get();
+    const { project, mainTrackMagnetEnabled } = state;
+    if (!project.mediaIndex.some((m) => m.id === assetId)) return false;
+
+    const clipIds: string[] = [];
+    for (const track of project.tracks) {
+      for (const clip of track.clips) {
+        if (clip.mediaId === assetId) clipIds.push(clip.id);
+      }
+    }
+
+    let tracks = project.tracks;
+    if (clipIds.length > 0) {
+      tracks =
+        rippleDeleteMany({
+          tracks,
+          clipIds,
+          mainTrackMagnetEnabled,
+        }) ?? tracks;
+    }
+
+    const mediaIndex = project.mediaIndex.filter((m) => m.id !== assetId);
+    const remainingIds = new Set(
+      tracks.flatMap((t) => t.clips.map((c) => c.id)),
+    );
+    const selectedClipIds = state.selectedClipIds.filter((id) =>
+      remainingIds.has(id),
+    );
+    const selectedClipId =
+      state.selectedClipId && remainingIds.has(state.selectedClipId)
+        ? state.selectedClipId
+        : (selectedClipIds[selectedClipIds.length - 1] ?? null);
+    const playheadMs = clampPlayheadMs(project.playheadMs, tracks);
+
+    set({
+      project: touch({ ...project, mediaIndex, tracks, playheadMs }),
+      selectedMediaId:
+        state.selectedMediaId === assetId ? null : state.selectedMediaId,
+      selectedClipId,
+      selectedClipIds,
+      selectedTrackId: selectedClipId
+        ? (tracks.find((t) => t.clips.some((c) => c.id === selectedClipId))
+            ?.id ?? null)
+        : null,
+      selectedTransitionId:
+        state.selectedTransitionId &&
+        remainingIds.has(state.selectedTransitionId)
+          ? state.selectedTransitionId
+          : null,
+      selectedCaptionCueIds: selectedClipId ? state.selectedCaptionCueIds : [],
+      captionCueRangeAnchorId: selectedClipId
+        ? state.captionCueRangeAnchorId
+        : null,
+      expandedKeyframeClipId:
+        state.expandedKeyframeClipId &&
+        remainingIds.has(state.expandedKeyframeClipId)
+          ? state.expandedKeyframeClipId
+          : null,
+      selectedKeyframeCluster:
+        state.selectedKeyframeCluster &&
+        remainingIds.has(state.selectedKeyframeCluster.clipId)
+          ? state.selectedKeyframeCluster
+          : null,
+      selectedTimelineKeyframe:
+        state.selectedTimelineKeyframe &&
+        remainingIds.has(state.selectedTimelineKeyframe.clipId)
+          ? state.selectedTimelineKeyframe
+          : null,
+      selectedEasingSegment:
+        state.selectedEasingSegment &&
+        remainingIds.has(state.selectedEasingSegment.clipId)
+          ? state.selectedEasingSegment
+          : null,
+      activeMaskId: selectedClipId ? state.activeMaskId : null,
+      removeBgEyedropperClipId:
+        state.removeBgEyedropperClipId &&
+        remainingIds.has(state.removeBgEyedropperClipId)
+          ? state.removeBgEyedropperClipId
+          : null,
+    });
+    return true;
   },
 
   selectClip: (clipId, trackId) => {

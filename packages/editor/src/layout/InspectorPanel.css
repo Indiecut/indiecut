@@ -1179,6 +1179,16 @@
   stroke-width: 1;
 }
 
+.inspector-curve__grid {
+  pointer-events: none;
+}
+
+.inspector-curve__grid line {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
 .inspector-curve__guide {
   stroke: var(--border);
   stroke-width: 1;

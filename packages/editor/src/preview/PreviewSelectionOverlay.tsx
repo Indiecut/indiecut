@@ -565,6 +565,7 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
       const stageY = e.clientY - rect.top;
 
       const state = useEditorStore.getState();
+      const additive = e.metaKey || e.ctrlKey;
       const hit = pickClipAtStagePoint({
         stageX,
         stageY,
@@ -577,9 +578,9 @@ export function PreviewSelectionOverlay({ stageRef }: Props) {
         layoutH: state.project.height,
         fps: state.project.fps,
         previewFitMode: state.previewFitMode,
+        // Keep current selection when re-clicking inside its bounds (even if buried).
+        preferClipId: additive ? null : state.selectedClipId,
       });
-
-      const additive = e.metaKey || e.ctrlKey;
 
       if (!hit) {
         e.preventDefault();

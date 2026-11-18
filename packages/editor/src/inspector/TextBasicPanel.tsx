@@ -7,6 +7,8 @@ import {
   type CSSProperties,
 } from "react";
 import { textHasShadow } from "../compositor/rasterizeText";
+import { evaluateClipOpacity } from "../engine/animatable";
+import { clipLocalMs } from "../engine/time";
 import {
   findFontByStack,
   getRecentFontStacks,
@@ -15,6 +17,7 @@ import {
   type TextFontEntry,
 } from "../fonts/registry";
 import type { Clip, TextProps, Track } from "../project/types";
+import { useEditorStore } from "../store/editorStore";
 import {
   AA_CUSTOM_PRESET_ID,
   AA_STYLE_PRESETS,
@@ -31,6 +34,7 @@ import {
 } from "../textTemplates/registry";
 import { ColorField, toPickerHex } from "./ColorField";
 import { Clip3DPanel } from "./Clip3DPanel";
+import { InspectorKeyframeRow } from "./InspectorKeyframeRow";
 import { TextAnimationPanel } from "./TextAnimationPanel";
 import { TextBubblePanel } from "./TextBubblePanel";
 import { TextEffectsPanel } from "./TextEffectsPanel";
@@ -260,6 +264,14 @@ export function TextBasicPanel({ clip, track }: Props) {
   const locked = track.locked;
   const gesture = useClipGestureEdit(clip.id, "Text");
   const templates = useMemo(() => getTextTemplates(), []);
+  const playheadMs = useEditorStore((s) => s.project.playheadMs);
+  const setAnimatableValue = useEditorStore((s) => s.setAnimatableValue);
+  const localMs = clipLocalMs(playheadMs, clip);
+  const opacity =
+    localMs !== null
+      ? evaluateClipOpacity(clip, localMs)
+      : evaluateClipOpacity(clip, 0);
+  const opacityDisabled = locked || localMs === null;
 
   const text = resolvePanelText(clip);
   const shadowOn = textHasShadow(text);
@@ -543,6 +555,55 @@ export function TextBasicPanel({ clip, track }: Props) {
               onEnd={gesture.end}
               onLive={(hex) => liveText({ color: hex })}
             />
+
+            <InspectorKeyframeRow
+              clipId={clip.id}
+              path="opacity"
+              label="Opacity"
+              disabled={opacityDisabled}
+            >
+              <input
+                type="range"
+                className="inspector-slider"
+                min={0}
+                max={100}
+                step={1}
+                disabled={opacityDisabled}
+                value={Math.round(opacity * 100)}
+                onPointerDown={gesture.begin}
+                onPointerUp={gesture.end}
+                onChange={(e) => {
+                  gesture.ensureBegin();
+                  setAnimatableValue(
+                    clip.id,
+                    "opacity",
+                    Number(e.target.value) / 100,
+                  );
+                }}
+              />
+              <input
+                type="number"
+                className="inspector-number"
+                disabled={opacityDisabled}
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(opacity * 100)}
+                onFocus={gesture.begin}
+                onBlur={gesture.end}
+                onChange={(e) => {
+                  const pct = Number(e.target.value);
+                  if (!Number.isFinite(pct)) return;
+                  gesture.ensureBegin();
+                  setAnimatableValue(
+                    clip.id,
+                    "opacity",
+                    Math.min(100, Math.max(0, pct)) / 100,
+                  );
+                }}
+              />
+              <span className="inspector-field__unit">%</span>
+            </InspectorKeyframeRow>
 
             <label className="inspector-field">
               <span className="inspector-field__label">Align</span>

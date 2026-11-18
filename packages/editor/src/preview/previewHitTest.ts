@@ -233,10 +233,100 @@ export type PickClipArgs = {
   layoutH: number;
   fps: number;
   previewFitMode: "fit" | "full";
+  /**
+   * When set, if this clip is under the point keep it even when buried under
+   * a larger top layer (sticky selection for re-click / drag).
+   */
+  preferClipId?: string | null;
 };
+
+type LayerHitArgs = {
+  stageX: number;
+  stageY: number;
+  stageW: number;
+  stageH: number;
+  tracks: Track[];
+  mediaIndex: MediaAssetRef[];
+  playheadMs: number;
+  layoutW: number;
+  layoutH: number;
+  previewFitMode: "fit" | "full";
+  clip: Clip;
+  localMs: number;
+};
+
+function hitTestLayerClip(args: LayerHitArgs): PickResult | null {
+  const {
+    stageX,
+    stageY,
+    stageW,
+    stageH,
+    tracks,
+    mediaIndex,
+    playheadMs,
+    layoutW,
+    layoutH,
+    previewFitMode,
+    clip,
+    localMs,
+  } = args;
+
+  if (!isPickableKind(clip.kind)) return null;
+
+  const found = findClip(tracks, clip.id);
+  if (!found || found.track.locked || found.track.hidden) return null;
+
+  const size = contentSizeForClip({
+    clip,
+    playheadMs,
+    mediaIndex,
+    layoutW,
+    layoutH,
+    previewFitMode,
+  });
+  if (!size) return null;
+
+  const geo = stageGeometryForClip({
+    clip,
+    contentSize: size,
+    stageW,
+    stageH,
+    layoutW,
+    layoutH,
+    localMs,
+  });
+  if (!geo) return null;
+
+  if (
+    !pointInRotatedRect(
+      stageX,
+      stageY,
+      geo.centerX,
+      geo.centerY,
+      geo.boxW,
+      geo.boxH,
+      geo.rotation,
+    )
+  ) {
+    return null;
+  }
+
+  let cueId: string | null = null;
+  if (clip.kind === "caption" && clip.caption) {
+    const cue = activeCaptionCue(
+      clip.caption.cues,
+      localMs,
+      clip.caption.speed,
+    );
+    cueId = cue?.id ?? null;
+  }
+
+  return { clip, trackId: found.track.id, cueId };
+}
 
 /**
  * Topmost pickable clip under a stage point (layout→stage 2D box + rotation).
+ * Prefer an already-selected clip when the click lands inside its bounds.
  */
 export function pickClipAtStagePoint(args: PickClipArgs): PickResult | null {
   const {
@@ -251,6 +341,7 @@ export function pickClipAtStagePoint(args: PickClipArgs): PickResult | null {
     layoutH,
     fps,
     previewFitMode,
+    preferClipId,
   } = args;
 
   const layers = resolvePreviewLayers(
@@ -261,62 +352,43 @@ export function pickClipAtStagePoint(args: PickClipArgs): PickResult | null {
     layoutH,
   );
 
+  const hitArgsBase = {
+    stageX,
+    stageY,
+    stageW,
+    stageH,
+    tracks,
+    mediaIndex,
+    playheadMs,
+    layoutW,
+    layoutH,
+    previewFitMode,
+  };
+
+  // Sticky selection: re-click inside the selected item keeps it, even if buried.
+  if (preferClipId) {
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const layer = layers[i]!;
+      if (layer.clip.id !== preferClipId) continue;
+      const preferred = hitTestLayerClip({
+        ...hitArgsBase,
+        clip: layer.clip,
+        localMs: layer.localMs,
+      });
+      if (preferred) return preferred;
+      break;
+    }
+  }
+
   // Layers are bottom → top; walk top → bottom for pick.
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i]!;
-    if (!isPickableKind(layer.kind)) continue;
-
-    const found = findClip(tracks, layer.clip.id);
-    if (!found || found.track.locked || found.track.hidden) continue;
-
-    const clip = found.clip;
-    const localMs = layer.localMs;
-    const size = contentSizeForClip({
-      clip,
-      playheadMs,
-      mediaIndex,
-      layoutW,
-      layoutH,
-      previewFitMode,
+    const hit = hitTestLayerClip({
+      ...hitArgsBase,
+      clip: layer.clip,
+      localMs: layer.localMs,
     });
-    if (!size) continue;
-
-    const geo = stageGeometryForClip({
-      clip,
-      contentSize: size,
-      stageW,
-      stageH,
-      layoutW,
-      layoutH,
-      localMs,
-    });
-    if (!geo) continue;
-
-    if (
-      !pointInRotatedRect(
-        stageX,
-        stageY,
-        geo.centerX,
-        geo.centerY,
-        geo.boxW,
-        geo.boxH,
-        geo.rotation,
-      )
-    ) {
-      continue;
-    }
-
-    let cueId: string | null = null;
-    if (clip.kind === "caption" && clip.caption) {
-      const cue = activeCaptionCue(
-        clip.caption.cues,
-        localMs,
-        clip.caption.speed,
-      );
-      cueId = cue?.id ?? null;
-    }
-
-    return { clip, trackId: found.track.id, cueId };
+    if (hit) return hit;
   }
 
   return null;

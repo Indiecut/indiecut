@@ -37,6 +37,7 @@ import {
   TEXT_TEMPLATE_DRAG_MIME,
   type TextPresetId,
 } from "../media/addTextToTimeline";
+import { deleteMediaAsset } from "../media/deleteMedia";
 import {
   importDroppedFiles,
   importMediaViaDialog,
@@ -391,6 +392,11 @@ export function MediaPanel() {
             toggleFavorite(mediaMenu.assetId, !mediaMenu.favorite);
             setMediaMenu(null);
           }}
+          onDelete={() => {
+            const id = mediaMenu.assetId;
+            setMediaMenu(null);
+            void deleteMediaAsset(id);
+          }}
         />
       )}
     </div>
@@ -401,10 +407,12 @@ function MediaContextMenu({
   menu,
   onClose,
   onToggleFavorite,
+  onDelete,
 }: {
   menu: MediaContextMenuState;
   onClose: () => void;
   onToggleFavorite: () => void;
+  onDelete: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -427,7 +435,7 @@ function MediaContextMenu({
   }, [onClose]);
 
   const left = Math.min(menu.x, window.innerWidth - 180);
-  const top = Math.min(menu.y, window.innerHeight - 80);
+  const top = Math.min(menu.y, window.innerHeight - 100);
 
   return (
     <div
@@ -444,6 +452,14 @@ function MediaContextMenu({
         onClick={onToggleFavorite}
       >
         {menu.favorite ? "Remove from favorites" : "Add to favorites"}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="media-context-menu__item media-context-menu__item--danger"
+        onClick={onDelete}
+      >
+        Delete
       </button>
     </div>
   );
@@ -875,7 +891,7 @@ function MediaCard({
       title={
         errored
           ? asset.importError || "Import failed"
-          : "Click to inspect · right-click for favorites · double-click or + to add at playhead"
+          : "Click to inspect · right-click for options · double-click or + to add at playhead"
       }
       onClick={() => selectMedia(asset.id)}
       onDoubleClick={() => {

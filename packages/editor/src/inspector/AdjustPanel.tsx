@@ -182,20 +182,24 @@ function LumaCurveEditor({
   onCommit,
 }: LumaProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
   const dragIdxRef = useRef<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const width = 260;
   const height = 140;
   const pad = 10;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
 
   const mapped = useMemo(
     () =>
       points.map((p) => ({
         ...p,
-        x: pad + p.t * (width - pad * 2),
-        y: pad + (1 - p.y) * (height - pad * 2),
+        x: pad + p.t * innerW,
+        y: pad + (1 - p.y) * innerH,
       })),
-    [points],
+    [innerH, innerW, points],
   );
 
   const pathD = useMemo(() => {
@@ -211,20 +215,40 @@ function LumaCurveEditor({
     const svg = svgRef.current;
     if (!svg) return { t: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const t = Math.min(1, Math.max(0, (x - pad) / (width - pad * 2)));
-    const yn = 1 - (y - pad) / (height - pad * 2);
+    if (rect.width <= 0 || rect.height <= 0) return { t: 0, y: 0 };
+    // Map CSS pixels → viewBox space (SVG may be CSS-scaled).
+    const x = ((clientX - rect.left) / rect.width) * width;
+    const y = ((clientY - rect.top) / rect.height) * height;
+    const t = Math.min(1, Math.max(0, (x - pad) / innerW));
+    const yn = 1 - (y - pad) / innerH;
     return { t, y: Math.min(1, Math.max(0, yn)) };
   };
 
-  const updatePoint = (idx: number, next: LumaCurvePoint, live: boolean) => {
-    const arr = points.map((p, i) => (i === idx ? next : p));
-    if (idx === 0) arr[0] = { t: 0, y: next.y };
-    if (idx === points.length - 1) arr[points.length - 1] = { t: 1, y: next.y };
-    arr.sort((a, b) => a.t - b.t);
-    if (live) onLive(arr);
-    else onCommit(arr);
+  /** Keep indices stable while dragging — clamp between neighbors, no mid-drag sort. */
+  const movePoint = (idx: number, next: LumaCurvePoint) => {
+    const pts = pointsRef.current;
+    const arr = pts.map((p) => ({ ...p }));
+    const last = pts.length - 1;
+    if (idx === 0) {
+      arr[0] = { t: 0, y: next.y };
+    } else if (idx === last) {
+      arr[last] = { t: 1, y: next.y };
+    } else {
+      const lo = pts[idx - 1]!.t + 1e-4;
+      const hi = pts[idx + 1]!.t - 1e-4;
+      arr[idx] = {
+        t: Math.min(hi, Math.max(lo, next.t)),
+        y: next.y,
+      };
+    }
+    onLive(arr);
+  };
+
+  const endDrag = () => {
+    if (dragIdxRef.current === null) return;
+    dragIdxRef.current = null;
+    setDragIdx(null);
+    onEnd();
   };
 
   return (
@@ -237,15 +261,16 @@ function LumaCurveEditor({
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Luma curve"
-        onPointerDown={(e) => {
-          if (locked) return;
-          if (e.detail >= 2) {
-            const p = clientToPoint(e.clientX, e.clientY);
-            const next = [...points, p].sort((a, b) => a.t - b.t);
-            next[0] = { ...next[0]!, t: 0 };
-            next[next.length - 1] = { ...next[next.length - 1]!, t: 1 };
-            onCommit(next);
-          }
+        onDoubleClick={(e) => {
+          if (locked || dragIdxRef.current !== null) return;
+          e.preventDefault();
+          const p = clientToPoint(e.clientX, e.clientY);
+          // Keep endpoints pinned; insert interior only.
+          const t = Math.min(1 - 1e-4, Math.max(1e-4, p.t));
+          const next = [...points, { t, y: p.y }].sort((a, b) => a.t - b.t);
+          next[0] = { t: 0, y: next[0]!.y };
+          next[next.length - 1] = { t: 1, y: next[next.length - 1]!.y };
+          onCommit(next);
         }}
       >
         <rect
@@ -255,6 +280,26 @@ function LumaCurveEditor({
           height={height}
           className="inspector-curve__bg"
         />
+        <g className="inspector-curve__grid" aria-hidden>
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line
+              key={`v-${f}`}
+              x1={pad + f * innerW}
+              y1={pad}
+              x2={pad + f * innerW}
+              y2={height - pad}
+            />
+          ))}
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line
+              key={`h-${f}`}
+              x1={pad}
+              y1={pad + f * innerH}
+              x2={width - pad}
+              y2={pad + f * innerH}
+            />
+          ))}
+        </g>
         <line
           x1={pad}
           y1={height - pad}
@@ -275,27 +320,37 @@ function LumaCurveEditor({
                 : "inspector-curve__knot"
             }
             onPointerDown={(e) => {
-              if (locked) return;
+              if (locked || e.button !== 0) return;
               e.stopPropagation();
-              (e.target as Element).setPointerCapture(e.pointerId);
+              e.preventDefault();
+              const target = e.currentTarget;
+              target.setPointerCapture(e.pointerId);
               dragIdxRef.current = idx;
               setDragIdx(idx);
               onBegin();
+
+              const onMove = (ev: PointerEvent) => {
+                if (dragIdxRef.current !== idx) return;
+                movePoint(idx, clientToPoint(ev.clientX, ev.clientY));
+              };
+              const onUp = (ev: PointerEvent) => {
+                if (ev.pointerId !== e.pointerId) return;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
+                try {
+                  target.releasePointerCapture(ev.pointerId);
+                } catch {
+                  /* ignore */
+                }
+                endDrag();
+              };
+              window.addEventListener("pointermove", onMove);
+              window.addEventListener("pointerup", onUp);
+              window.addEventListener("pointercancel", onUp);
             }}
-            onPointerMove={(e) => {
-              if (dragIdxRef.current !== idx) return;
-              updatePoint(idx, clientToPoint(e.clientX, e.clientY), true);
-            }}
-            onPointerUp={(e) => {
-              if (dragIdxRef.current !== idx) return;
-              try {
-                (e.target as Element).releasePointerCapture(e.pointerId);
-              } catch {
-                /* ignore */
-              }
-              dragIdxRef.current = null;
-              setDragIdx(null);
-              onEnd();
+            onDoubleClick={(e) => {
+              e.stopPropagation();
             }}
             onContextMenu={(e) => {
               e.preventDefault();
