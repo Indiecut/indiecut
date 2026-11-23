@@ -12,6 +12,9 @@
  * - +Y up (canvas Y is flipped when building the model)
  * - +Z toward camera; plane rests at z=0
  * - Camera at z = +perspective; w = perspective - z
+ *
+ * Rotation Z uses the negated Primary/rotateZ angle so positive degrees stay
+ * clockwise on screen (Canvas2D / CSS), despite +Y-up eye space.
  */
 
 import type { ResolvedTransform, ResolvedTransform3D } from "../engine/animatable";
@@ -303,7 +306,9 @@ export function bakePlane3D(
   const rot2d = t.rotation * DEG;
   const rx = transform3d.rotateX * DEG;
   const ry = transform3d.rotateY * DEG;
-  const rz = transform3d.rotateZ * DEG + rot2d;
+  // Canvas/CSS 2D rotation is Y-down (positive = clockwise on screen). Eye space
+  // here is +Y up, so the same degrees must be negated for Z or 3D looks mirrored.
+  const rz = -(transform3d.rotateZ * DEG + rot2d);
   const zOff = transform3d.z;
   const perspective = Math.max(
     120,

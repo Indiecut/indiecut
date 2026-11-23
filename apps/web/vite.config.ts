@@ -10,7 +10,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icon.png"],
+      includeAssets: ["favicon.ico", "favicon.svg", "icon.png"],
       manifest: {
         name: "IndieCut",
         short_name: "IndieCut",

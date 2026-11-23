@@ -129,7 +129,8 @@ export function Plane3DWidget({
 
     const rx = rotateX * DEG;
     const ry = rotateY * DEG;
-    const rz = rotateZ * DEG;
+    // Negate Z to match Canvas/CSS Y-down degrees (same as bakePlane3D).
+    const rz = -rotateZ * DEG;
 
     // 3D clip plane: local XY offset/scale first, then rotated (matches bakePlane3D).
     const applyPlane = (p: Vec3): Vec3 => rotZ(rotY(rotX(p, rx), ry), rz);
