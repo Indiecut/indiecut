@@ -8,7 +8,9 @@ export function maskFingerprint(
   if (!masksEnabled || !masks || masks.length === 0) return "";
   return masks
     .map((m) => {
-      const size = m.size ? `${m.size.w.toFixed(1)}x${m.size.h.toFixed(1)}` : "";
+      const size = m.size
+        ? `${Number(m.size.w ?? 0).toFixed(1)}x${Number(m.size.h ?? 0).toFixed(1)}`
+        : "";
       const text = m.text
         ? `${m.text.content}|${m.text.fontFamily}|${m.text.fontSize}|${m.text.align ?? "c"}|${m.text.letterSpacing ?? 0}|${m.text.lineHeight ?? 1}`
         : "";
@@ -16,15 +18,15 @@ export function maskFingerprint(
         m.id,
         m.type,
         m.invert ? 1 : 0,
-        m.feather.toFixed(1),
-        (m.expand ?? 0).toFixed(1),
-        m.position.x.toFixed(1),
-        m.position.y.toFixed(1),
-        m.rotationDeg.toFixed(2),
+        Number(m.feather ?? 0).toFixed(1),
+        Number(m.expand ?? 0).toFixed(1),
+        Number(m.position?.x ?? 0).toFixed(1),
+        Number(m.position?.y ?? 0).toFixed(1),
+        Number(m.rotationDeg ?? 0).toFixed(2),
         m.booleanBlend ?? "",
         size,
-        (m.cornerRadius ?? 0).toFixed(1),
-        (m.stripGap ?? 0).toFixed(1),
+        Number(m.cornerRadius ?? 0).toFixed(1),
+        Number(m.stripGap ?? 0).toFixed(1),
         text,
       ].join(":");
     })

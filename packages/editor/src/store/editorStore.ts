@@ -31,6 +31,7 @@ import {
 import { pruneEmptyTracks, rippleDeleteMany } from "../engine/timelineOps";
 import { clipLocalMs, timelineDurationMs } from "../engine/time";
 import type { ExportProgress, ExportSettings } from "../export/types";
+import { saveChatUiPrefs } from "../prefs/appPrefs";
 import { createEmptyProject } from "../project/createProject";
 import type {
   AssetTab,
@@ -146,6 +147,10 @@ export type EditorState = {
   exportCanResume: boolean;
   exportDraft: ExportSettings | null;
   shortcutsOpen: boolean;
+  /** App-scoped AI settings (API keys) modal. */
+  aiSettingsOpen: boolean;
+  /** Full-height Chat right dock. Closed by default. */
+  chatOpen: boolean;
   /** Crop dialog open for the selected video/image clip. */
   cropDialogOpen: boolean;
   /** Floating Record dialog open. */
@@ -297,6 +302,11 @@ export type EditorState = {
   setExportDraft: (draft: ExportSettings | null) => void;
   resetExportSession: () => void;
   setShortcutsOpen: (open: boolean) => void;
+  setAiSettingsOpen: (open: boolean) => void;
+  setChatOpen: (open: boolean) => void;
+  toggleChatOpen: () => void;
+  /** Boot-only: apply persisted open flag without writing prefs again. */
+  hydrateChatOpen: (open: boolean) => void;
   setCropDialogOpen: (open: boolean) => void;
   setEditorTool: (tool: "select" | "blade") => void;
   setShuttleRate: (rate: number) => void;
@@ -370,6 +380,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   exportDraft: null,
   cropDialogOpen: false,
   shortcutsOpen: false,
+  aiSettingsOpen: false,
+  chatOpen: false,
   recordDialogOpen: false,
   recordCountdown: null,
   editorTool: "select",
@@ -1148,6 +1160,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       exportDraft: null,
     }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  setAiSettingsOpen: (open) => set({ aiSettingsOpen: open }),
+  setChatOpen: (open) => {
+    const next = Boolean(open);
+    set({ chatOpen: next });
+    void saveChatUiPrefs({ open: next });
+  },
+  toggleChatOpen: () => {
+    get().setChatOpen(!get().chatOpen);
+  },
+  /** Apply prefs loaded from IndexedDB during app boot (no re-write). */
+  hydrateChatOpen: (open: boolean) => set({ chatOpen: Boolean(open) }),
   setCropDialogOpen: (open) => set({ cropDialogOpen: open }),
   setEditorTool: (tool) => set({ editorTool: tool }),
   setShuttleRate: (rate) => set({ shuttleRate: rate }),

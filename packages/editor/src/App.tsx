@@ -6,10 +6,12 @@ import { CropDialog } from "./layout/CropDialog";
 import { DeleteProjectDialog } from "./layout/DeleteProjectDialog";
 import { ExportModal } from "./layout/ExportModal";
 import { NeedProjectDialog } from "./layout/NeedProjectDialog";
+import { loadAiSecrets } from "./ai/secrets/aiSecrets";
+import { AiSettingsPanel } from "./layout/AiSettingsPanel";
 import { ProjectSettingsModal } from "./layout/ProjectSettingsModal";
 import { ShortcutsPanel } from "./layout/ShortcutsPanel";
 import { bootProjectSession } from "./project/session";
-import { loadShortcutBindings } from "./prefs/appPrefs";
+import { loadChatUiPrefs, loadShortcutBindings } from "./prefs/appPrefs";
 import { useEditorStore } from "./store/editorStore";
 
 export default function App() {
@@ -17,13 +19,21 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      bootProjectSession(),
-      loadShortcutBindings(),
-      ensureTextFontsLoaded().catch(() => undefined),
-    ]).finally(() => {
-      if (!cancelled) setReady(true);
-    });
+    void (async () => {
+      try {
+        const [, , chatUi] = await Promise.all([
+          bootProjectSession(),
+          loadShortcutBindings(),
+          loadChatUiPrefs(),
+          loadAiSecrets(),
+          ensureTextFontsLoaded().catch(() => undefined),
+        ]);
+        if (cancelled) return;
+        useEditorStore.getState().hydrateChatOpen(chatUi.open);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -86,6 +96,7 @@ export default function App() {
       <ExportModal />
       <CropDialog />
       <ShortcutsPanel />
+      <AiSettingsPanel />
     </>
   );
 }

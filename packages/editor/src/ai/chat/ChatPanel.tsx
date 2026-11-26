@@ -1,0 +1,377 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import ReactMarkdown from "react-markdown";
+import { IconSend, IconStop } from "../../icons/Icons";
+import {
+  getClaudeModelId,
+  hasAnthropicKey,
+  hasElevenLabsVoice,
+  hasGeminiKey,
+  subscribeAiSecrets,
+} from "../secrets/aiSecrets";
+import { useEditorStore } from "../../store/editorStore";
+import { ActionCardView } from "./ActionCard";
+import { AgentSteps } from "./AgentSteps";
+import { useChatStore } from "./chatStore";
+import { ModePicker } from "./ModePicker";
+import { ModelPicker } from "./ModelPicker";
+import { PlanCardView } from "./PlanCard";
+import { VisionModePicker } from "./VisionModePicker";
+import "./ChatPanel.css";
+
+type ChatCopyMenuState = {
+  x: number;
+  y: number;
+  text: string;
+};
+
+function getSelectedTextIn(root: HTMLElement | null): string {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !root) return "";
+  if (sel.rangeCount === 0) return "";
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return "";
+  return sel.toString();
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  }
+}
+
+export function ChatPanel() {
+  const setAiSettingsOpen = useEditorStore((s) => s.setAiSettingsOpen);
+  const messages = useChatStore((s) => s.messages);
+  const draft = useChatStore((s) => s.draft);
+  const setDraft = useChatStore((s) => s.setDraft);
+  const modelId = useChatStore((s) => s.modelId);
+  const setModelId = useChatStore((s) => s.setModelId);
+  const visionMode = useChatStore((s) => s.visionMode);
+  const setVisionMode = useChatStore((s) => s.setVisionMode);
+  const chatMode = useChatStore((s) => s.chatMode);
+  const setChatMode = useChatStore((s) => s.setChatMode);
+  const streaming = useChatStore((s) => s.streaming);
+  const error = useChatStore((s) => s.error);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const stopStreaming = useChatStore((s) => s.stopStreaming);
+
+  const [keyReady, setKeyReady] = useState(() => hasAnthropicKey());
+  const [imageSkill, setImageSkill] = useState(() => hasGeminiKey());
+  const [voiceSkill, setVoiceSkill] = useState(() => hasElevenLabsVoice());
+  const [copyMenu, setCopyMenu] = useState<ChatCopyMenuState | null>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setKeyReady(hasAnthropicKey());
+    setImageSkill(hasGeminiKey());
+    setVoiceSkill(hasElevenLabsVoice());
+    setModelId(getClaudeModelId());
+    return subscribeAiSecrets(() => {
+      setKeyReady(hasAnthropicKey());
+      setImageSkill(hasGeminiKey());
+      setVoiceSkill(hasElevenLabsVoice());
+      setModelId(getClaudeModelId());
+    });
+  }, [setModelId]);
+
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, streaming]);
+
+  const blocked = !keyReady;
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!blocked && !streaming) void sendMessage();
+    }
+  };
+
+  const onTranscriptContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const selected = getSelectedTextIn(transcriptRef.current).trim();
+    let text = selected;
+    if (!text) {
+      const bubble = (e.target as HTMLElement | null)?.closest?.(
+        ".chat-panel__bubble",
+      );
+      const body = bubble?.querySelector(".chat-panel__bubble-text");
+      text = (body?.textContent ?? "").trim();
+    }
+    if (!text) return;
+    e.preventDefault();
+    setCopyMenu({ x: e.clientX, y: e.clientY, text });
+  };
+
+  return (
+    <div className="chat-panel">
+      <div className="chat-panel__header">
+        <div className="chat-panel__title-row">
+          <span className="chat-panel__title">Chat</span>
+          <div className="chat-panel__skills" aria-label="Skills">
+            <span
+              className={
+                imageSkill
+                  ? "chat-panel__skill"
+                  : "chat-panel__skill chat-panel__skill--disabled"
+              }
+              title={
+                imageSkill
+                  ? "Gemini image generate / edit available"
+                  : "Add Gemini API key in Settings → AI"
+              }
+            >
+              Image
+            </span>
+            <span
+              className={
+                voiceSkill
+                  ? "chat-panel__skill"
+                  : "chat-panel__skill chat-panel__skill--disabled"
+              }
+              title={
+                voiceSkill
+                  ? "ElevenLabs voiceover available"
+                  : "Add ElevenLabs API key and Voice ID in Settings → AI"
+              }
+            >
+              Voice
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="chat-panel__transcript"
+        ref={transcriptRef}
+        onContextMenu={onTranscriptContextMenu}
+      >
+        {messages.length === 0 && !blocked ? (
+          <p className="chat-panel__empty">
+            {chatMode === "ask"
+              ? "Ask for editing suggestions — IndieCut won’t change the timeline in Ask mode. Switch to Agent to apply edits."
+              : "Ask IndieCut to edit the timeline or selected clip — for example “split at the playhead” or “make the selected title bigger and white”. Destructive multi-clip deletes ask for Confirm first."}
+          </p>
+        ) : null}
+        {messages.map((m) => {
+          const isLiveAssistant =
+            streaming && m.role === "assistant" && m === messages[messages.length - 1];
+          const showLiveProgress =
+            isLiveAssistant && !!m.agentSteps && m.agentSteps.length > 0;
+          const empty =
+            !m.content &&
+            isLiveAssistant &&
+            !m.actionCard &&
+            !m.pendingPlan &&
+            !showLiveProgress
+              ? "…"
+              : null;
+          return (
+            <div
+              key={m.id}
+              className={`chat-panel__bubble chat-panel__bubble--${m.role}${m.stale ? " chat-panel__bubble--stale" : ""}`}
+            >
+              <div className="chat-panel__bubble-role">
+                {m.role === "user" ? "You" : "IndieCut"}
+              </div>
+              {showLiveProgress ? (
+                <AgentSteps steps={m.agentSteps!} live />
+              ) : null}
+              {m.role === "assistant" ? (
+                m.content || empty ? (
+                  <div className="chat-panel__bubble-text chat-panel__md">
+                    {empty ? (
+                      empty
+                    ) : (
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                    )}
+                  </div>
+                ) : null
+              ) : (
+                <div className="chat-panel__bubble-text chat-panel__bubble-text--plain">
+                  {m.content}
+                </div>
+              )}
+              {m.pendingPlan ? (
+                <PlanCardView
+                  messageId={m.id}
+                  plan={m.pendingPlan}
+                  stale={Boolean(m.stale)}
+                />
+              ) : null}
+              {m.actionCard ? (
+                <ActionCardView
+                  messageId={m.id}
+                  card={m.actionCard}
+                  stale={Boolean(m.stale)}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {copyMenu ? (
+        <ChatCopyMenu
+          menu={copyMenu}
+          onClose={() => setCopyMenu(null)}
+          onCopy={() => {
+            void copyTextToClipboard(copyMenu.text).finally(() =>
+              setCopyMenu(null),
+            );
+          }}
+        />
+      ) : null}
+
+      {error ? (
+        <p className="chat-panel__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="chat-panel__composer">
+        {blocked ? (
+          <div className="chat-panel__blocked">
+            <p className="chat-panel__blocked-text">
+              Add an Anthropic API key to use Chat.
+            </p>
+            <button
+              type="button"
+              className="chat-panel__cta"
+              onClick={() => setAiSettingsOpen(true)}
+            >
+              Settings → AI
+            </button>
+          </div>
+        ) : (
+          <div className="chat-panel__input-wrap">
+            <textarea
+              ref={textareaRef}
+              className="chat-panel__input"
+              rows={3}
+              placeholder={
+                chatMode === "ask"
+                  ? "Ask for a suggestion…"
+                  : "Ask IndieCut…"
+              }
+              value={draft}
+              disabled={streaming}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+            />
+            <div className="chat-panel__composer-left">
+              <ModePicker
+                value={chatMode}
+                disabled={streaming}
+                onChange={setChatMode}
+              />
+              <ModelPicker
+                value={modelId}
+                disabled={streaming}
+                onChange={setModelId}
+              />
+            </div>
+            <VisionModePicker
+              value={visionMode}
+              disabled={streaming}
+              onChange={setVisionMode}
+            />
+            {streaming ? (
+              <button
+                type="button"
+                className="chat-panel__icon-btn chat-panel__icon-btn--stop"
+                title="Stop"
+                aria-label="Stop"
+                onClick={() => stopStreaming()}
+              >
+                <IconStop size={14} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="chat-panel__icon-btn chat-panel__icon-btn--send"
+                title="Send"
+                aria-label="Send"
+                disabled={!draft.trim()}
+                onClick={() => void sendMessage()}
+              >
+                <IconSend size={14} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatCopyMenu({
+  menu,
+  onClose,
+  onCopy,
+}: {
+  menu: ChatCopyMenuState;
+  onClose: () => void;
+  onCopy: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [onClose]);
+
+  const left = Math.min(menu.x, window.innerWidth - 140);
+  const top = Math.min(menu.y, window.innerHeight - 56);
+
+  return (
+    <div
+      ref={rootRef}
+      className="chat-copy-menu"
+      style={{ left, top }}
+      role="menu"
+      aria-label="Chat text menu"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="chat-copy-menu__item"
+        onClick={onCopy}
+      >
+        Copy
+      </button>
+    </div>
+  );
+}

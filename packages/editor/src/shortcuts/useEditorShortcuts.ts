@@ -20,6 +20,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+/** True when the user has highlighted DOM text (e.g. chat transcript). */
+function hasDomTextSelection(): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return false;
+  return sel.toString().length > 0;
+}
+
 type ShortcutHost = {
   getTimelineViewportWidth: () => number;
 };
@@ -52,6 +59,16 @@ function onEditorKeyDown(e: KeyboardEvent): void {
   }
 
   if (!matched) return;
+
+  // Prefer native clipboard when text is highlighted (chat, inspector labels,
+  // etc.). Otherwise Cmd/Ctrl+C steals the event for timeline clip copy.
+  if (
+    (matched === "edit.copy" || matched === "edit.cut") &&
+    hasDomTextSelection()
+  ) {
+    return;
+  }
+
   e.preventDefault();
   dispatchBridge.dispatch(matched, {
     getTimelineViewportWidth: () => host.getTimelineViewportWidth(),

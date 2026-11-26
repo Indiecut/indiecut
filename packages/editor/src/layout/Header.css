@@ -17,6 +17,11 @@
   padding-left: 78px;
 }
 
+/* Fullscreen hides traffic lights — drop the inset so the brand sits flush. */
+.app-header--mac.app-header--mac-fullscreen {
+  padding-left: 12px;
+}
+
 .app-header button,
 .app-header a,
 .app-header input,
@@ -197,7 +202,14 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
   color: var(--text-secondary);
+}
+
+.app-header__icon-btn--active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border);
 }
 
 .app-header__export {

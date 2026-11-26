@@ -941,6 +941,56 @@ function handleClear() {
   clearStage();
 }
 
+async function handleCaptureComposite(
+  msg: Extract<PreviewWorkerRequest, { type: "captureComposite" }>,
+): Promise<void> {
+  if (!stage || !stageCtx || stageWidth < 1 || stageHeight < 1) {
+    post({
+      type: "failure",
+      requestId: msg.requestId,
+      error: "Preview stage not ready",
+    });
+    return;
+  }
+
+  const maxWidth = Math.max(16, Math.min(2048, msg.maxWidth ?? 768));
+  const quality = Math.min(1, Math.max(0.1, msg.quality ?? 0.7));
+  const mimeType = msg.mimeType === "image/webp" ? "image/webp" : "image/jpeg";
+
+  const scale = Math.min(1, maxWidth / stageWidth);
+  const outW = Math.max(1, Math.round(stageWidth * scale));
+  const outH = Math.max(1, Math.round(stageHeight * scale));
+
+  try {
+    let source: OffscreenCanvas = stage;
+    if (outW !== stageWidth || outH !== stageHeight) {
+      const scaled = new OffscreenCanvas(outW, outH);
+      const ctx = scaled.getContext("2d");
+      if (!ctx) throw new Error("2D context unavailable for capture");
+      ctx.drawImage(stage, 0, 0, outW, outH);
+      source = scaled;
+    }
+
+    const blob = await source.convertToBlob({ type: mimeType, quality });
+    const buffer = await blob.arrayBuffer();
+    const response: PreviewWorkerResponse = {
+      type: "capturedComposite",
+      requestId: msg.requestId,
+      width: outW,
+      height: outH,
+      mimeType,
+      buffer,
+    };
+    self.postMessage(response, [buffer]);
+  } catch (err) {
+    post({
+      type: "failure",
+      requestId: msg.requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function handleSampleSourcePixel(
   msg: Extract<PreviewWorkerRequest, { type: "sampleSourcePixel" }>,
 ): Promise<void> {
@@ -1058,6 +1108,9 @@ self.onmessage = (event: MessageEvent<PreviewWorkerRequest>) => {
           break;
         case "sampleSourcePixel":
           await handleSampleSourcePixel(msg);
+          break;
+        case "captureComposite":
+          await handleCaptureComposite(msg);
           break;
         default:
           break;

@@ -4,12 +4,22 @@ import {
   removeRecent,
   setLastProjectPath,
 } from "../prefs/appPrefs";
+import { useChatStore } from "../ai/chat/chatStore";
 import { clearHistory } from "../engine/history";
 import { useEditorStore } from "../store/editorStore";
 import { createEmptyProject } from "./createProject";
 import { parseProjectJson, serializeProject } from "./persistence";
 import type { ProjectDocument } from "./types";
 import { getPlatform } from "@indiecut/platform";
+
+function syncChatForProject(projectPath: string | null): void {
+  void useChatStore
+    .getState()
+    .loadForProject(projectPath)
+    .catch((err) => {
+      console.warn("Failed to load AI chat transcript", err);
+    });
+}
 
 const AUTOSAVE_MS = 800;
 
@@ -108,6 +118,7 @@ export async function openProjectAt(projectPath: string): Promise<void> {
     selectedTrackId: null,
     lastSavedAt: doc.updatedAt,
   });
+  syncChatForProject(projectPath);
   await pushRecent({ path: projectPath, title: doc.title });
   await setLastProjectPath(projectPath);
 
@@ -147,6 +158,7 @@ export async function createProjectAt(
     selectedMediaId: null,
     lastSavedAt: null,
   });
+  syncChatForProject(projectPath);
   await saveProjectNow(doc);
 }
 
@@ -203,6 +215,7 @@ export async function deleteCurrentProject(): Promise<void> {
     await setLastProjectPath(null);
   }
 
+  useChatStore.getState().clearSession();
   useEditorStore.setState({
     project: createEmptyProject(),
     selectedClipId: null,
@@ -253,6 +266,7 @@ export async function bootProjectSession(): Promise<void> {
         project: createEmptyProject(),
         lastSavedAt: null,
       });
+      syncChatForProject(null);
       return;
     }
 
@@ -273,6 +287,7 @@ export async function bootProjectSession(): Promise<void> {
       project: createEmptyProject(),
       lastSavedAt: null,
     });
+    syncChatForProject(null);
   })();
   return bootPromise;
 }

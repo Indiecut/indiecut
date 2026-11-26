@@ -1,7 +1,9 @@
 /**
- * IndieCut AI features — keep optional / model-backed work here so core
- * editor code stays detachable.
+ * IndieCut AI features — host-first chat + capability catalog protocol.
  *
- * No AI modules are currently shipped. Chroma Remove BG lives in
- * `src/compositor/removeBgColor.ts`.
+ * Model-facing surface: seven Anthropic tools in `protocol/tools.ts`
+ * backed by `catalog/` registrations. Chat chrome, secrets, streaming,
+ * Ask/Agent, Action Cards, and vision heuristics live under `chat/`,
+ * `secrets/`, `providers/`, and `context/`. Captions (Whisper) under
+ * `captions/` — also exposed via skill_run / catalog.
  */

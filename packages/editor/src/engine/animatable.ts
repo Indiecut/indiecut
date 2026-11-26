@@ -359,13 +359,25 @@ function sortedKeyframes<T>(
 }
 
 export function evaluateProperty(
-  prop: AnimatableProperty<number> | undefined | null,
+  prop: AnimatableProperty<number> | number | undefined | null,
   localMs: number,
   fallback = 0,
 ): number {
-  if (!prop) return fallback;
-  const kfs = sortedKeyframes(prop.keyframes);
-  if (kfs.length === 0) return prop.staticValue;
+  if (prop == null) return fallback;
+  // Bare numbers (e.g. AI mask patches) — treat as static.
+  if (typeof prop === "number") {
+    return Number.isFinite(prop) ? prop : fallback;
+  }
+  if (typeof prop !== "object") return fallback;
+  const kfs = Array.isArray(prop.keyframes)
+    ? sortedKeyframes(prop.keyframes)
+    : [];
+  if (kfs.length === 0) {
+    return typeof prop.staticValue === "number" &&
+      Number.isFinite(prop.staticValue)
+      ? prop.staticValue
+      : fallback;
+  }
 
   if (localMs <= kfs[0]!.timeOffsetMs) return kfs[0]!.value;
   const last = kfs[kfs.length - 1]!;
@@ -492,11 +504,11 @@ export function evaluateClipMask(
     id: mask.id,
     name: mask.name,
     type: mask.type,
-    invert: mask.invert,
+    invert: Boolean(mask.invert),
     feather: evaluateMaskLeaf(mask.feather, localMs, 0),
     position: {
-      x: evaluateMaskLeaf(mask.position.x, localMs, 0),
-      y: evaluateMaskLeaf(mask.position.y, localMs, 0),
+      x: evaluateMaskLeaf(mask.position?.x, localMs, 0),
+      y: evaluateMaskLeaf(mask.position?.y, localMs, 0),
     },
     rotationDeg: evaluateMaskLeaf(mask.rotationDeg, localMs, 0),
     booleanBlend: mask.booleanBlend,

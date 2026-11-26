@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { IconKeyboard, IconSettings, IconChevronDown } from "../icons/Icons";
+import {
+  IconChat,
+  IconKeyboard,
+  IconSettings,
+  IconChevronDown,
+} from "../icons/Icons";
 import { getRecents, type RecentProject } from "../prefs/appPrefs";
 import {
   openProjectAt,
@@ -26,12 +31,30 @@ export function Header() {
   const setSettingsOpen = useEditorStore((s) => s.setSettingsOpen);
   const setExportOpen = useEditorStore((s) => s.setExportOpen);
   const setShortcutsOpen = useEditorStore((s) => s.setShortcutsOpen);
+  const setAiSettingsOpen = useEditorStore((s) => s.setAiSettingsOpen);
+  const chatOpen = useEditorStore((s) => s.chatOpen);
+  const toggleChatOpen = useEditorStore((s) => s.toggleChatOpen);
   const setDeleteProjectDialogOpen = useEditorStore(
     (s) => s.setDeleteProjectDialogOpen,
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [recents, setRecents] = useState<RecentProject[]>([]);
+  const [macFullscreen, setMacFullscreen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Traffic-light inset only for the desktop shell (hiddenInset title bar), not web/PWA.
+  const isMacDesktop =
+    typeof navigator !== "undefined" &&
+    /Mac/.test(navigator.platform) &&
+    Boolean(getPlatform()?.capabilities?.revealInFolder);
+
+  useEffect(() => {
+    if (!isMacDesktop) return;
+    const win = getPlatform()?.window;
+    if (!win) return;
+    void win.isFullScreen().then(setMacFullscreen);
+    return win.onFullScreenChange(setMacFullscreen);
+  }, [isMacDesktop]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -75,14 +98,16 @@ export function Header() {
     }
   };
 
-  // Traffic-light inset only for the desktop shell (hiddenInset title bar), not web/PWA.
-  const isMacDesktop =
-    typeof navigator !== "undefined" &&
-    /Mac/.test(navigator.platform) &&
-    Boolean(getPlatform()?.capabilities?.revealInFolder);
-
   return (
-    <header className={`app-header${isMacDesktop ? " app-header--mac" : ""}`}>
+    <header
+      className={[
+        "app-header",
+        isMacDesktop ? "app-header--mac" : "",
+        isMacDesktop && macFullscreen ? "app-header--mac-fullscreen" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div className="app-header__left">
         <span className="app-header__brand">
           <img
@@ -163,6 +188,17 @@ export function Header() {
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false);
+                  setAiSettingsOpen(true);
+                }}
+              >
+                AI settings…
+              </button>
+              <button
+                type="button"
+                className="app-header__dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
                   setShortcutsOpen(true);
                 }}
               >
@@ -182,6 +218,16 @@ export function Header() {
       </div>
 
       <div className="app-header__right">
+        <button
+          type="button"
+          className={`app-header__icon-btn${chatOpen ? " app-header__icon-btn--active" : ""}`}
+          title="Chat"
+          aria-label="Chat"
+          aria-pressed={chatOpen}
+          onClick={() => toggleChatOpen()}
+        >
+          <IconChat />
+        </button>
         <button
           type="button"
           className="app-header__icon-btn"

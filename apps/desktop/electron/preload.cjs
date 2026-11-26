@@ -53,5 +53,28 @@ contextBridge.exposeInMainWorld("indiecut", {
     blockSleep: () => ipcRenderer.invoke("power:blockSleep"),
     allowSleep: () => ipcRenderer.invoke("power:allowSleep"),
   },
+  secrets: {
+    getAiSecrets: () => ipcRenderer.invoke("secrets:getAiSecrets"),
+    setAiSecrets: (next) => ipcRenderer.invoke("secrets:setAiSecrets", next),
+  },
+  ai: {
+    streamAnthropic: (opts) => ipcRenderer.invoke("ai:anthropicStream", opts),
+    abortAnthropic: (streamId) =>
+      ipcRenderer.invoke("ai:anthropicAbort", streamId),
+    onAnthropicEvent: (listener) => {
+      const handler = (_event, payload) => listener(payload);
+      ipcRenderer.on("ai:anthropic-event", handler);
+      return () => ipcRenderer.removeListener("ai:anthropic-event", handler);
+    },
+  },
+  window: {
+    isFullScreen: () => ipcRenderer.invoke("window:isFullScreen"),
+    onFullScreenChange: (listener) => {
+      const handler = (_event, fullScreen) => listener(Boolean(fullScreen));
+      ipcRenderer.on("window:fullscreen-changed", handler);
+      return () =>
+        ipcRenderer.removeListener("window:fullscreen-changed", handler);
+    },
+  },
   getPathForFile: (file) => webUtils.getPathForFile(file),
 });
