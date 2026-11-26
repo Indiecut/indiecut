@@ -11,6 +11,13 @@ export function buildChatTail(
   const recent = messages.slice(-maxTurns);
   return recent.map((m) => {
     let summary = m.content.trim();
+    if (m.images && m.images.length > 0) {
+      const note =
+        m.images.length === 1
+          ? "[1 reference image attached]"
+          : `[${m.images.length} reference images attached]`;
+      summary = summary ? `${summary}\n${note}` : note;
+    }
     if (m.actionCard) {
       const cardNote = `[Action Card ${m.actionCard.id}: ${m.actionCard.summary}]`;
       summary = summary ? `${summary}\n${cardNote}` : cardNote;

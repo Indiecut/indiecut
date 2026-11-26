@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { registerCapability } from "../register";
+import { textPropsSchema } from "../textSchema";
 
 const clipIdSchema = z.string().min(1);
 
@@ -71,20 +72,23 @@ registerCapability({
   id: "timeline.insertText",
   domain: "timeline",
   title: "Insert text clip",
-  summary: "Insert a text clip on the timeline",
+  summary:
+    "Insert a text clip; pass content and/or runs for rich per-span styling",
   verbs: ["timeline"],
   targets: ["timeline"],
   risk: "safe",
-  schema: z.object({
+  schema: textPropsSchema.extend({
     action: z.literal("insertText"),
-    content: z.string(),
     startMs: z.number().optional(),
     durationMs: z.number().optional(),
     trackId: z.string().optional(),
     preset: z.enum(["title", "body"]).optional(),
-    fontSize: z.number().optional(),
-    color: z.string().optional(),
   }),
+  constraints: [
+    "Provide content and/or runs (runs join becomes content)",
+    "Prefer runs when spans need different color/weight/gradient/highlight",
+    "After insert, further style via document_patch on clip.text / text.runs",
+  ],
 });
 
 registerCapability({

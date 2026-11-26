@@ -11,8 +11,14 @@ import type {
   TextAnimationParams,
   TextAnimPhase,
   TextProps,
+  TextRun,
   Track,
 } from "../../project/types";
+import {
+  normalizeTextProps,
+  replaceContentKeepingBaseStyle,
+  runsFromPlain,
+} from "../../text/runs";
 import { findClip, getEditorStore } from "../../store/editorStore";
 import { markBatchDirty, type MutationBatch } from "./mutationBatch";
 import type { ToolResult } from "./types";
@@ -97,6 +103,7 @@ export function isToolResult(v: unknown): v is ToolResult {
 
 const TEXT_KEYS = new Set([
   "content",
+  "runs",
   "fontSize",
   "fontFamily",
   "color",
@@ -106,22 +113,58 @@ const TEXT_KEYS = new Set([
   "letterSpacing",
   "lineHeight",
   "textTransform",
+  "textDecoration",
+  "gradient",
   "strokeColor",
   "strokeWidth",
   "shadowColor",
   "shadowBlur",
   "shadowOffsetX",
   "shadowOffsetY",
+  "retro3DColor",
+  "bubble",
+  "stylePresetId",
+  "templateId",
 ]);
+
+function parseRunsPatch(value: unknown): TextRun[] | ToolResult {
+  if (!Array.isArray(value)) {
+    return {
+      ok: false,
+      summary: "text.runs must be an array",
+      data: { error: "invalid_type", key: "runs" },
+    };
+  }
+  const runs: TextRun[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return {
+        ok: false,
+        summary: "Each text run must be an object",
+        data: { error: "invalid_type", key: "runs" },
+      };
+    }
+    const obj = item as Record<string, unknown>;
+    const text = typeof obj.text === "string" ? obj.text : "";
+    const style =
+      obj.style && typeof obj.style === "object" && !Array.isArray(obj.style)
+        ? (obj.style as TextRun["style"])
+        : undefined;
+    runs.push({ text, style });
+  }
+  return runs;
+}
 
 export function mergeText(
   current: TextProps | undefined,
   patch: Record<string, unknown>,
 ): TextProps | ToolResult {
-  const next: TextProps = {
+  let next: TextProps = {
     content: current?.content ?? "",
     ...(current ?? {}),
   };
+  let contentPatched = false;
+  let runsPatched = false;
   for (const [key, value] of Object.entries(patch)) {
     if (!TEXT_KEYS.has(key)) {
       return {
@@ -130,9 +173,48 @@ export function mergeText(
         data: { error: "unknown_text_key", key },
       };
     }
+    if (key === "runs") {
+      const parsed = parseRunsPatch(value);
+      if ("ok" in parsed) return parsed;
+      next = { ...next, runs: parsed };
+      runsPatched = true;
+      continue;
+    }
+    if (key === "content") {
+      if (typeof value !== "string") {
+        return {
+          ok: false,
+          summary: "text.content must be a string",
+          data: { error: "invalid_type", key: "content" },
+        };
+      }
+      next = { ...next, content: value };
+      contentPatched = true;
+      continue;
+    }
     (next as Record<string, unknown>)[key] = value;
   }
-  return next;
+  if (runsPatched && !contentPatched) {
+    return normalizeTextProps(next);
+  }
+  if (contentPatched && !runsPatched) {
+    return replaceContentKeepingBaseStyle(next, next.content);
+  }
+  if (contentPatched && runsPatched) {
+    return normalizeTextProps(next);
+  }
+  // Style-only patch: keep runs in sync when still uniform single-run.
+  if (
+    next.runs &&
+    next.runs.length === 1 &&
+    (!next.runs[0]!.style || Object.keys(next.runs[0]!.style).length === 0)
+  ) {
+    return normalizeTextProps({
+      ...next,
+      runs: runsFromPlain(next.content),
+    });
+  }
+  return normalizeTextProps(next);
 }
 
 function parseAnimPhase(

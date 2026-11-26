@@ -2,11 +2,14 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
-import { IconSend, IconStop } from "../../icons/Icons";
+import { IconImage, IconSend, IconStop } from "../../icons/Icons";
+import { MAX_USER_REFERENCE_IMAGES } from "../context/downscaleUserImage";
 import {
   getClaudeModelId,
   hasAnthropicKey,
@@ -61,6 +64,9 @@ export function ChatPanel() {
   const messages = useChatStore((s) => s.messages);
   const draft = useChatStore((s) => s.draft);
   const setDraft = useChatStore((s) => s.setDraft);
+  const draftImages = useChatStore((s) => s.draftImages);
+  const addDraftImages = useChatStore((s) => s.addDraftImages);
+  const removeDraftImage = useChatStore((s) => s.removeDraftImage);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
   const visionMode = useChatStore((s) => s.visionMode);
@@ -78,6 +84,9 @@ export function ChatPanel() {
   const [copyMenu, setCopyMenu] = useState<ChatCopyMenuState | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const canSend = Boolean(draft.trim() || draftImages.length > 0);
 
   useEffect(() => {
     setKeyReady(hasAnthropicKey());
@@ -103,8 +112,29 @@ export function ChatPanel() {
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!blocked && !streaming) void sendMessage();
+      if (!blocked && !streaming && canSend) void sendMessage();
     }
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length === 0) return;
+    e.preventDefault();
+    void addDraftImages(files);
+  };
+
+  const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) void addDraftImages(files);
+    e.target.value = "";
   };
 
   const onTranscriptContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -207,9 +237,26 @@ export function ChatPanel() {
                   </div>
                 ) : null
               ) : (
-                <div className="chat-panel__bubble-text chat-panel__bubble-text--plain">
-                  {m.content}
-                </div>
+                <>
+                  {m.images && m.images.length > 0 ? (
+                    <div className="chat-panel__bubble-images">
+                      {m.images.map((img) => (
+                        <img
+                          key={img.id}
+                          className="chat-panel__bubble-image"
+                          src={`data:${img.mimeType};base64,${img.base64}`}
+                          alt={img.name}
+                          title={`${img.name} (${img.width}×${img.height})`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {m.content ? (
+                    <div className="chat-panel__bubble-text chat-panel__bubble-text--plain">
+                      {m.content}
+                    </div>
+                  ) : null}
+                </>
               )}
               {m.pendingPlan ? (
                 <PlanCardView
@@ -264,19 +311,51 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="chat-panel__input-wrap">
+            {draftImages.length > 0 ? (
+              <div className="chat-panel__draft-images" aria-label="Attached images">
+                {draftImages.map((img) => (
+                  <div key={img.id} className="chat-panel__draft-image">
+                    <img
+                      src={`data:${img.mimeType};base64,${img.base64}`}
+                      alt={img.name}
+                      title={`${img.name} (${img.width}×${img.height})`}
+                    />
+                    <button
+                      type="button"
+                      className="chat-panel__draft-image-remove"
+                      title="Remove image"
+                      aria-label={`Remove ${img.name}`}
+                      disabled={streaming}
+                      onClick={() => removeDraftImage(img.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <textarea
               ref={textareaRef}
               className="chat-panel__input"
               rows={3}
               placeholder={
                 chatMode === "ask"
-                  ? "Ask for a suggestion…"
-                  : "Ask IndieCut…"
+                  ? "Ask for a suggestion… (paste or attach a reference image)"
+                  : "Ask IndieCut… (paste or attach a reference image)"
               }
               value={draft}
               disabled={streaming}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={onPaste}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+              multiple
+              hidden
+              onChange={onPickFiles}
             />
             <div className="chat-panel__composer-left">
               <ModePicker
@@ -289,6 +368,22 @@ export function ChatPanel() {
                 disabled={streaming}
                 onChange={setModelId}
               />
+              <button
+                type="button"
+                className="chat-panel__attach-btn"
+                title={
+                  draftImages.length >= MAX_USER_REFERENCE_IMAGES
+                    ? `Up to ${MAX_USER_REFERENCE_IMAGES} reference images`
+                    : "Attach reference image"
+                }
+                aria-label="Attach reference image"
+                disabled={
+                  streaming || draftImages.length >= MAX_USER_REFERENCE_IMAGES
+                }
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <IconImage size={14} />
+              </button>
             </div>
             <VisionModePicker
               value={visionMode}
@@ -311,7 +406,7 @@ export function ChatPanel() {
                 className="chat-panel__icon-btn chat-panel__icon-btn--send"
                 title="Send"
                 aria-label="Send"
-                disabled={!draft.trim()}
+                disabled={!canSend}
                 onClick={() => void sendMessage()}
               >
                 <IconSend size={14} />

@@ -6,6 +6,7 @@ import { captureCheapComposite } from "../context/captureCheapComposite";
 import type {
   ChatInteractionMode,
   CheapCompositeAttachment,
+  UserReferenceAttachment,
   VisionMode,
 } from "../context/types";
 import { shouldAttachCheapComposite } from "../context/visionPolicy";
@@ -80,6 +81,8 @@ export type RunChatTurnOpts = {
   model: string;
   historyMessages: ChatMessage[];
   userText: string;
+  /** Downscaled user reference images for this turn only. */
+  userImages?: UserReferenceAttachment[];
   projectPath: string | null;
   visionMode: VisionMode;
   mode?: ChatInteractionMode;
@@ -176,6 +179,14 @@ function historyToApiMessages(
   const recent = history.slice(-6);
   return recent.map((m) => {
     let content = m.content;
+    // Past reference images are summarized only — bytes are not resent.
+    if (m.images && m.images.length > 0) {
+      const note =
+        m.images.length === 1
+          ? "[1 reference image was attached on this turn]"
+          : `[${m.images.length} reference images were attached on this turn]`;
+      content = content ? `${content}\n${note}` : note;
+    }
     if (m.actionCard) {
       content = content
         ? `${content}\n[Action Card: ${m.actionCard.summary}]`
@@ -197,7 +208,7 @@ function historyToApiMessages(
 }
 
 function imageBlockFromAttachment(
-  att: CheapCompositeAttachment,
+  att: CheapCompositeAttachment | UserReferenceAttachment,
 ): AnthropicImageBlock {
   const media =
     att.mimeType === "image/png"
@@ -685,6 +696,14 @@ export async function runChatTurn(
   }
 
   const userContent: AnthropicContentBlock[] = [];
+  const userImages = opts.userImages?.slice(0, 3) ?? [];
+  for (const img of userImages) {
+    userContent.push(imageBlockFromAttachment(img));
+    userContent.push({
+      type: "text",
+      text: `[user reference image "${img.name}" ${img.width}×${img.height}]`,
+    });
+  }
   if (attachment) {
     userContent.push(imageBlockFromAttachment(attachment));
     userContent.push({
@@ -692,7 +711,10 @@ export async function runChatTurn(
       text: `[attached composite ${attachment.width}px @ playhead ${attachment.playheadMs}ms]`,
     });
   }
-  userContent.push({ type: "text", text: opts.userText });
+  const userText =
+    opts.userText.trim() ||
+    (userImages.length > 0 ? "Please use the attached reference image(s)." : "");
+  userContent.push({ type: "text", text: userText });
 
   const messages: AnthropicChatMessage[] = [
     ...apiHistory,

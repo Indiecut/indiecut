@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { registerCapability } from "../register";
 import { registerRecipe } from "../buildCatalog";
+import { textPropsSchema } from "../textSchema";
 
 const animatableNumber = z.union([
   z.number(),
@@ -27,38 +28,85 @@ Static number or AnimatableProperty. Keyframe via keyframe.set with animPath tra
 Keyframe times are clip-local ms.`,
 );
 
+registerRecipe(
+  "clip-text.md",
+  `# clip.text (rich text)
+
+## Uniform style
+document_patch \`set\` path \`text.color\` | \`text.fontSize\` | \`text.fontFamily\` | \`text.strokeWidth\` | …
+Or replace the whole blob: path \`text\`, value = partial TextProps.
+
+## Mixed styles (runs)
+path \`text.runs\` — array of \`{ text, style? }\`.
+\`content\` is always the join of run text (kept in sync).
+When both \`content\` and \`runs\` are sent, runs win for layout; content is rewritten from runs.
+
+### Run style fields
+fontFamily, fontSize, fontWeight, fontStyle (normal|italic),
+textDecoration (none|underline|line-through), textTransform,
+script (normal|super|sub), color, gradient (CSS linear-gradient string or null),
+highlight (marker bg hex or null), strokeColor, strokeWidth, letterSpacing.
+
+### Box-only fields (whole clip)
+align, lineHeight, shadow*, retro3DColor, bubble (via text.bubble).
+
+### Gradient example
+\`linear-gradient(90deg, #f59e0b 0%, #ec4899 100%)\`
+
+### Fonts (bundled stacks)
+Inter, Montserrat, Playfair Display, Space Grotesk, Pacifico, Anton, Bangers,
+Fredoka, Permanent Marker, Comic Neue, Rubik Mono One, Press Start 2P,
+system-ui, Georgia, Menlo, Helvetica Neue.
+
+Invent bold / neon / hollow / highlight looks by combining color, gradient,
+stroke, highlight, and weight — no preset catalog required.
+`,
+);
+
 registerCapability({
   id: "clip.text",
   domain: "clip",
   title: "Text properties",
-  summary: "Text content, font, color, stroke, shadow, align",
+  summary:
+    "Rich text: content, runs (per-span style), font, color, gradient, stroke, shadow, highlight, align",
   verbs: ["inspect", "patch"],
   targets: ["clip"],
   risk: "safe",
-  schema: z.object({
-    content: z.string().optional(),
-    fontSize: z.number().optional(),
-    fontFamily: z.string().optional(),
-    color: z.string().optional(),
-    fontWeight: z.union([z.string(), z.number()]).optional(),
-    align: z.enum(["left", "center", "right"]).optional(),
-    fontStyle: z.string().optional(),
-    letterSpacing: z.number().optional(),
-    lineHeight: z.number().optional(),
-    textTransform: z.string().optional(),
-    strokeColor: z.string().optional(),
-    strokeWidth: z.number().optional(),
-    shadowColor: z.string().optional(),
-    shadowBlur: z.number().optional(),
-    shadowOffsetX: z.number().optional(),
-    shadowOffsetY: z.number().optional(),
-  }),
+  schema: textPropsSchema,
+  recipeRef: "clip-text.md",
+  constraints: [
+    "Use text.runs for mixed fonts/colors/highlights in one clip",
+    "gradient is a CSS linear-gradient(...) string; null clears",
+    "highlight is a marker background color; null clears",
+  ],
   examples: [
     {
       op: "set",
       target: "clip",
       path: "text.color",
       value: "#F3E3C3",
+    },
+    {
+      op: "set",
+      target: "clip",
+      path: "text.runs",
+      value: [
+        {
+          text: "NEW ",
+          style: {
+            fontWeight: 900,
+            color: "#0f172a",
+            highlight: "#facc15",
+          },
+        },
+        {
+          text: "DROP",
+          style: {
+            fontWeight: 900,
+            gradient: "linear-gradient(90deg, #f59e0b 0%, #ec4899 100%)",
+          },
+        },
+      ],
     },
   ],
 });

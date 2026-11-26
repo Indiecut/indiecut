@@ -249,15 +249,51 @@ export type TextBubbleProps = {
   paddingX: number;
   paddingY: number;
   accentColor?: string;
+  /** Shape chrome opacity 0–1 (fill + stroke). Default 1. */
+  opacity?: number;
 };
 
-export type TextProps = {
-  content: string;
+/** Per-run / per-range typography override (merged onto box-level TextProps defaults). */
+export type TextRunStyle = {
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: number | string;
   fontStyle?: "normal" | "italic";
-  textDecoration?: "none" | "underline";
+  textDecoration?: "none" | "underline" | "line-through";
+  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  script?: "normal" | "super" | "sub";
+  color?: string;
+  /** CSS linear-gradient string; null clears fill gradient for this run */
+  gradient?: string | null;
+  /** Marker / highlight background behind glyphs; null = off */
+  highlight?: string | null;
+  strokeColor?: string;
+  strokeWidth?: number;
+  letterSpacing?: number;
+};
+
+/** Contiguous styled span inside a text clip. */
+export type TextRun = {
+  text: string;
+  style?: TextRunStyle;
+};
+
+export type TextProps = {
+  /**
+   * Plain concatenation of runs (always kept in sync).
+   * Source of truth for timeline labels, AI context, and legacy callers.
+   */
+  content: string;
+  /**
+   * Rich styled spans. When absent/empty, treated as a single run from
+   * `content` + box-level typography fields.
+   */
+  runs?: TextRun[];
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number | string;
+  fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline" | "line-through";
   textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
   color?: string;
   /** Optional fill override; when set, rasterizer draws gradient fill instead of flat color */

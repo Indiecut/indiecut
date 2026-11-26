@@ -5,7 +5,9 @@ import type {
   TextAnimationParams,
   TextBubbleProps,
   TextProps,
+  TextRun,
 } from "../project/types";
+import { normalizeTextProps, plainContent } from "../text/runs";
 
 export type TextTemplateCategory =
   | "title"
@@ -17,14 +19,18 @@ export type TextTemplateCategory =
   | "gaming"
   | "caption";
 
+/** Box-level recipe (typography defaults + chrome). Run styles live in defaultRuns. */
 export type TextTemplateRecipe = Partial<
-  Omit<TextProps, "content" | "templateId" | "stylePresetId">
+  Omit<TextProps, "content" | "runs" | "templateId" | "stylePresetId">
 >;
 
 export type TextTemplateEntry = {
   id: string;
   name: string;
   category: TextTemplateCategory;
+  /** Rich showcase content (source of truth for new clips / apply). */
+  defaultRuns: TextRun[];
+  /** Plain join of defaultRuns — labels / search / legacy. */
   defaultText: string;
   recipe: TextTemplateRecipe;
   defaultAnimation?: TextAnimationParams;
@@ -37,7 +43,7 @@ export type TextTemplateManifest = {
   templates: TextTemplateEntry[];
 };
 
-/** Style keys a template recipe may overwrite when applied to an existing clip. */
+/** Style keys a template recipe may overwrite on the box. */
 export const TEMPLATE_RECIPE_KEYS = [
   "fontFamily",
   "fontSize",
@@ -85,7 +91,42 @@ export const TEXT_TEMPLATE_CATEGORY_LABEL: Record<TextTemplateCategory, string> 
     caption: "Caption",
   };
 
-const bundled = rawManifest as TextTemplateManifest;
+function hydrateEntry(raw: Record<string, unknown>): TextTemplateEntry {
+  const defaultRuns = Array.isArray(raw.defaultRuns)
+    ? (raw.defaultRuns as TextRun[])
+    : [
+        {
+          text:
+            typeof raw.defaultText === "string" ? raw.defaultText : "Text",
+        },
+      ];
+  const defaultText =
+    typeof raw.defaultText === "string"
+      ? raw.defaultText
+      : plainContent(defaultRuns);
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    category: raw.category as TextTemplateCategory,
+    defaultRuns,
+    defaultText,
+    recipe: (raw.recipe ?? {}) as TextTemplateRecipe,
+    defaultAnimation: raw.defaultAnimation as TextAnimationParams | undefined,
+  };
+}
+
+const bundledRaw = rawManifest as {
+  version: number;
+  source: string;
+  license: string;
+  templates: Array<Record<string, unknown>>;
+};
+const bundled: TextTemplateManifest = {
+  version: bundledRaw.version,
+  source: bundledRaw.source,
+  license: bundledRaw.license,
+  templates: bundledRaw.templates.map(hydrateEntry),
+};
 const entryById = new Map<string, TextTemplateEntry>();
 for (const t of bundled.templates) {
   entryById.set(t.id, t);
@@ -136,11 +177,20 @@ function cloneBubble(
   return { ...bubble };
 }
 
+function cloneRuns(runs: TextRun[]): TextRun[] {
+  return runs.map((r) => ({
+    text: r.text,
+    style: r.style ? { ...r.style } : undefined,
+  }));
+}
+
 /** Build full TextProps for a new timeline clip from a template. */
 export function textPropsFromTemplate(entry: TextTemplateEntry): TextProps {
   const recipe = entry.recipe;
+  const runs = cloneRuns(entry.defaultRuns);
   const next: TextProps = {
-    content: entry.defaultText,
+    content: plainContent(runs),
+    runs,
     templateId: entry.id,
     stylePresetId: null,
   };
@@ -155,21 +205,22 @@ export function textPropsFromTemplate(entry: TextTemplateEntry): TextProps {
     }
   }
 
-  return next;
+  return normalizeTextProps(next);
 }
 
 /**
- * Apply a template recipe onto an existing clip's text.
- * Keeps `content`; sets `templateId`; clears `stylePresetId`.
+ * Apply a rich template: replaces runs + content with defaultRuns and box recipe.
  */
 export function applyTemplateRecipe(
   current: TextProps,
   entry: TextTemplateEntry,
 ): TextProps {
   const recipe = entry.recipe;
+  const runs = cloneRuns(entry.defaultRuns);
   const next: TextProps = {
     ...current,
-    content: current.content,
+    content: plainContent(runs),
+    runs,
     templateId: entry.id,
     stylePresetId: null,
   };
@@ -184,5 +235,5 @@ export function applyTemplateRecipe(
     }
   }
 
-  return next;
+  return normalizeTextProps(next);
 }

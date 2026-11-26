@@ -1,4 +1,5 @@
-import type { TextProps } from "../project/types";
+import type { TextProps, TextRunStyle } from "../project/types";
+import { mapRunStyles, normalizeTextProps } from "../text/runs";
 
 /** Partial paint fields set by Aa presets (not full templates). */
 export type AaPreset = {
@@ -235,7 +236,7 @@ export function aaPresetMatches(text: TextProps, preset: AaPreset): boolean {
  */
 export function applyAaPreset(current: TextProps, presetId: string): TextProps {
   const preset = findAaPreset(presetId) ?? findAaPreset("none")!;
-  const next: TextProps = { ...current };
+  let next: TextProps = { ...current };
 
   if (preset.id === "none") {
     Object.assign(next, cleanRecipeDefaults());
@@ -245,7 +246,19 @@ export function applyAaPreset(current: TextProps, presetId: string): TextProps {
   }
 
   next.stylePresetId = preset.id;
-  return next;
+
+  // Propagate paint recipe onto every run so rich templates stay coherent.
+  const paint: TextRunStyle = {};
+  if (next.color != null) paint.color = next.color;
+  if (next.gradient !== undefined) paint.gradient = next.gradient;
+  if (next.strokeColor != null) paint.strokeColor = next.strokeColor;
+  if (next.strokeWidth != null) paint.strokeWidth = next.strokeWidth;
+  next = mapRunStyles(next, (style) => ({
+    ...(style ?? {}),
+    ...paint,
+    highlight: style?.highlight ?? null,
+  }));
+  return normalizeTextProps(next);
 }
 
 /** Mark recipe as hand-tuned after a named Aa apply. */

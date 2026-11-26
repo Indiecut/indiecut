@@ -60,11 +60,24 @@ export type ChatAgentStep = {
   at: string;
 };
 
+/** Downscaled reference image attached to a user chat turn. */
+export type ChatUserImage = {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  /** Base64 (no data: prefix). Already downscaled before attach. */
+  base64: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
   createdAt: string;
+  /** User reference images for this turn (downscaled JPEG/PNG/WebP). */
+  images?: ChatUserImage[];
   actionCard?: ChatActionCard;
   /** Waiting for user Confirm / Run plan (destructive batches). */
   pendingPlan?: ChatPendingPlan;
@@ -214,6 +227,38 @@ function normalizeAgentSteps(raw: unknown): ChatAgentStep[] | undefined {
   return out.length > 0 ? out.slice(-40) : undefined;
 }
 
+function normalizeUserImages(raw: unknown): ChatUserImage[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ChatUserImage[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const img = item as Record<string, unknown>;
+    if (typeof img.id !== "string" || !img.id) continue;
+    if (typeof img.base64 !== "string" || !img.base64) continue;
+    if (typeof img.width !== "number" || !Number.isFinite(img.width)) continue;
+    if (typeof img.height !== "number" || !Number.isFinite(img.height)) {
+      continue;
+    }
+    const mime =
+      img.mimeType === "image/png" || img.mimeType === "image/webp"
+        ? img.mimeType
+        : "image/jpeg";
+    out.push({
+      id: img.id,
+      name:
+        typeof img.name === "string" && img.name.trim()
+          ? img.name.trim()
+          : "reference.jpg",
+      width: Math.max(1, Math.round(img.width)),
+      height: Math.max(1, Math.round(img.height)),
+      mimeType: mime,
+      base64: img.base64,
+    });
+    if (out.length >= 3) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeMessages(raw: unknown): ChatMessage[] {
   if (!Array.isArray(raw)) return [];
   const out: ChatMessage[] = [];
@@ -232,6 +277,8 @@ function normalizeMessages(raw: unknown): ChatMessage[] {
           ? m.createdAt
           : new Date().toISOString(),
     };
+    const images = normalizeUserImages(m.images);
+    if (images) msg.images = images;
     const card = normalizeActionCard(m.actionCard);
     if (card) msg.actionCard = card;
     const plan = normalizePendingPlan(m.pendingPlan);

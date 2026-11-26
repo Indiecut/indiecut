@@ -8,6 +8,7 @@ import {
 } from "../catalog";
 import { hasElevenLabsVoice, hasGeminiKey } from "../secrets/aiSecrets";
 import { buildChatTail } from "./chatTail";
+import { summarizeTextProps } from "./textSummary";
 import type {
   AiClipSummary,
   AiContextPack,
@@ -68,20 +69,7 @@ function summarizeClip(
   if (clip.blendMode) summary.blendMode = clip.blendMode;
 
   if (clip.kind === "text" && clip.text) {
-    summary.text = {
-      content: clip.text.content,
-      fontSize: clip.text.fontSize,
-      fontFamily: clip.text.fontFamily,
-      color: clip.text.color,
-      align: clip.text.align,
-      fontWeight: clip.text.fontWeight,
-      letterSpacing: clip.text.letterSpacing,
-      textTransform: clip.text.textTransform,
-      strokeColor: clip.text.strokeColor,
-      strokeWidth: clip.text.strokeWidth,
-      shadowColor: clip.text.shadowColor,
-      shadowBlur: clip.text.shadowBlur,
-    };
+    summary.text = summarizeTextProps(clip.text);
   }
   if (clip.animation) {
     summary.animation = { ...clip.animation } as Record<string, unknown>;

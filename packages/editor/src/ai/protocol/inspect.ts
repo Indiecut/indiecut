@@ -1,4 +1,5 @@
 import { buildTimelineSkim } from "../context/assembleContextPack";
+import { summarizeTextProps } from "../context/textSummary";
 import { timelineDurationMs } from "../../engine/time";
 import type { Clip } from "../../project/types";
 import { findClip, getEditorStore } from "../../store/editorStore";
@@ -49,25 +50,7 @@ function sanitizeClip(clip: Clip): Record<string, unknown> {
       : undefined,
     opacity: clip.opacity?.staticValue,
     blendMode: clip.blendMode,
-    text: clip.text
-      ? {
-          content: clip.text.content,
-          fontSize: clip.text.fontSize,
-          fontFamily: clip.text.fontFamily,
-          color: clip.text.color,
-          align: clip.text.align,
-          fontWeight: clip.text.fontWeight,
-          fontStyle: clip.text.fontStyle,
-          letterSpacing: clip.text.letterSpacing,
-          textTransform: clip.text.textTransform,
-          strokeColor: clip.text.strokeColor,
-          strokeWidth: clip.text.strokeWidth,
-          shadowColor: clip.text.shadowColor,
-          shadowBlur: clip.text.shadowBlur,
-          shadowOffsetX: clip.text.shadowOffsetX,
-          shadowOffsetY: clip.text.shadowOffsetY,
-        }
-      : undefined,
+    text: clip.text ? summarizeTextProps(clip.text) : undefined,
     animation: clip.animation ?? null,
     audio: clip.audio
       ? {

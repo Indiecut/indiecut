@@ -14,6 +14,14 @@ import type {
   TextProps,
 } from "../project/types";
 import {
+  normalizeTextProps,
+  sliceRuns,
+} from "../text/runs";
+import {
+  layoutRichText,
+  shouldUseRichTextPath,
+} from "./richTextLayout";
+import {
   bubbleRectForText,
   contentInsets,
   lineAdvanceHeight,
@@ -37,6 +45,9 @@ export type LaidOutTextUnit = {
   y: number;
   width: number;
   height: number;
+  /** Optional code-point range into plain content (rich runs). */
+  startIndex?: number;
+  endIndex?: number;
 };
 
 export type TextUnitLayout = {
@@ -65,11 +76,112 @@ export function layoutTextUnits(
   props: TextProps,
   anim?: TextAnimationParams | null,
 ): TextUnitLayout | null {
-  const block = measureTextSize(props);
+  const normalized = normalizeTextProps(props);
+  const block = measureTextSize(normalized);
   if (!block) return null;
 
   const granularity = effectiveGranularity(anim);
-  const t = resolveText(props, 1);
+
+  if (shouldUseRichTextPath(normalized) && granularity !== "whole") {
+    const rich = layoutRichText(normalized, 1);
+    if (!rich) return null;
+    const units: LaidOutTextUnit[] = [];
+    let index = 0;
+    const inset = contentInsets(rich.box);
+
+    if (granularity === "line") {
+      for (const line of rich.lines) {
+        const text = line.glyphs.map((g) => g.ch).join("");
+        const startIndex = line.glyphs[0]?.index ?? 0;
+        const endIndex =
+          line.glyphs.length > 0
+            ? line.glyphs[line.glyphs.length - 1]!.index + 1
+            : startIndex;
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        units.push({
+          index: index++,
+          text,
+          x: ox,
+          y: inset.y + line.y,
+          width: Math.max(line.width, 1) + rich.box.pad * 2,
+          height: line.height + rich.box.pad,
+          startIndex,
+          endIndex,
+        });
+      }
+    } else if (granularity === "word") {
+      for (const line of rich.lines) {
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        let i = 0;
+        while (i < line.glyphs.length) {
+          const g0 = line.glyphs[i]!;
+          if (/\s/.test(g0.ch)) {
+            i += 1;
+            continue;
+          }
+          let j = i;
+          while (j < line.glyphs.length && !/\s/.test(line.glyphs[j]!.ch)) {
+            j += 1;
+          }
+          const slice = line.glyphs.slice(i, j);
+          const text = slice.map((g) => g.ch).join("");
+          const x0 = slice[0]!.x;
+          const x1 = slice[slice.length - 1]!.x + slice[slice.length - 1]!.width;
+          units.push({
+            index: index++,
+            text,
+            x: ox + x0,
+            y: inset.y + line.y,
+            width: Math.max(x1 - x0, 1) + rich.box.pad * 2,
+            height: line.height + rich.box.pad * 2,
+            startIndex: slice[0]!.index,
+            endIndex: slice[slice.length - 1]!.index + 1,
+          });
+          i = j;
+        }
+      }
+    } else {
+      for (const line of rich.lines) {
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        for (const g of line.glyphs) {
+          units.push({
+            index: index++,
+            text: g.ch,
+            x: ox + g.x,
+            y: inset.y + line.y,
+            width: Math.max(g.width, 1) + rich.box.pad * 2,
+            height: line.height + rich.box.pad * 2,
+            startIndex: g.index,
+            endIndex: g.index + 1,
+          });
+        }
+      }
+    }
+
+    return {
+      blockWidth: block.width,
+      blockHeight: block.height,
+      granularity,
+      units,
+    };
+  }
+
+  const t = resolveText(normalized, 1);
   // Same as measureTextSize: document canvas on main so FontFaces apply.
   const canvas =
     typeof document !== "undefined"
@@ -229,6 +341,7 @@ export function rasterizeTextUnit(
   props: TextProps,
   unitText: string,
   pixelRatio: number,
+  range?: { startIndex: number; endIndex: number },
 ): {
   canvas: OffscreenCanvas;
   width: number;
@@ -236,11 +349,26 @@ export function rasterizeTextUnit(
   logicalWidth: number;
   logicalHeight: number;
 } | null {
-  const unitProps: TextProps = {
-    ...props,
+  const normalized = normalizeTextProps(props);
+  let unitProps: TextProps = {
+    ...normalized,
     content: unitText === "\n" ? " " : unitText || " ",
     align: "left",
   };
+  if (
+    range &&
+    shouldUseRichTextPath(normalized) &&
+    normalized.runs &&
+    range.endIndex > range.startIndex
+  ) {
+    const runs = sliceRuns(normalized.runs, range.startIndex, range.endIndex);
+    unitProps = normalizeTextProps({
+      ...normalized,
+      runs,
+      content: unitText === "\n" ? " " : unitText || " ",
+      align: "left",
+    });
+  }
   const t = resolveText(unitProps, pixelRatio);
   const pr = t.pr;
   const fontSize = t.fontSize;
@@ -528,7 +656,14 @@ export function compositeAnimatedText(args: {
 
     let bmp = unitBitmaps.get(i);
     if (!bmp) {
-      const raster = rasterizeTextUnit(props, unit.text, pr);
+      const raster = rasterizeTextUnit(
+        props,
+        unit.text,
+        pr,
+        unit.startIndex != null && unit.endIndex != null
+          ? { startIndex: unit.startIndex, endIndex: unit.endIndex }
+          : undefined,
+      );
       if (!raster) continue;
       bmp = raster;
       unitBitmaps.set(i, bmp);

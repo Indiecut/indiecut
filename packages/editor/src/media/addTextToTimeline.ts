@@ -6,6 +6,7 @@ import {
   isSharedVisualTrack,
 } from "../engine/timelineOps";
 import type { Clip, TextProps, Track } from "../project/types";
+import { normalizeTextProps } from "../text/runs";
 import { getEditorStore } from "../store/editorStore";
 import {
   findTextTemplate,
@@ -40,7 +41,9 @@ function newClipId(): string {
 }
 
 export function textPropsForPreset(preset: TextPresetId): TextProps {
-  return { ...(preset === "body" ? BODY_DEFAULTS : TITLE_DEFAULTS) };
+  return normalizeTextProps({
+    ...(preset === "body" ? BODY_DEFAULTS : TITLE_DEFAULTS),
+  });
 }
 
 export type PlaceTextOnTracksOpts = {

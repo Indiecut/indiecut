@@ -4,6 +4,7 @@ import {
   coerceTransform,
   coerceTransform3D,
 } from "../engine/animatable";
+import { normalizeTextProps } from "../text/runs";
 import { createEmptyProject } from "./createProject";
 import type {
   BlendMode,
@@ -38,6 +39,8 @@ import type {
   TextAnimPhase,
   TextBubbleProps,
   TextProps,
+  TextRun,
+  TextRunStyle,
   Track,
   TrackType,
 } from "./types";
@@ -505,6 +508,10 @@ function parseTextBubble(raw: unknown): TextBubbleProps | undefined {
         : 8,
     accentColor:
       typeof raw.accentColor === "string" ? raw.accentColor : undefined,
+    opacity:
+      typeof raw.opacity === "number" && Number.isFinite(raw.opacity)
+        ? Math.min(1, Math.max(0, raw.opacity))
+        : undefined,
   };
 }
 
@@ -667,6 +674,7 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
 
   const textDecoration: TextProps["textDecoration"] =
     raw.textDecoration === "underline" ||
+    raw.textDecoration === "line-through" ||
     raw.textDecoration === "none"
       ? raw.textDecoration
       : undefined;
@@ -679,7 +687,7 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
       ? raw.textTransform
       : undefined;
 
-  return {
+  const parsed: TextProps = {
     content,
     fontFamily:
       typeof raw.fontFamily === "string" ? raw.fontFamily : undefined,
@@ -742,7 +750,73 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
         : typeof raw.templateId === "string"
           ? raw.templateId
           : undefined,
+    runs: parseTextRuns(raw.runs),
   };
+  return normalizeTextProps(parsed);
+}
+
+function parseTextRunStyle(raw: unknown): TextRunStyle | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const style: TextRunStyle = {};
+  if (typeof raw.fontFamily === "string") style.fontFamily = raw.fontFamily;
+  if (typeof raw.fontSize === "number" && Number.isFinite(raw.fontSize)) {
+    style.fontSize = Math.max(1, raw.fontSize);
+  }
+  if (typeof raw.fontWeight === "number" || typeof raw.fontWeight === "string") {
+    style.fontWeight = raw.fontWeight;
+  }
+  if (raw.fontStyle === "italic" || raw.fontStyle === "normal") {
+    style.fontStyle = raw.fontStyle;
+  }
+  if (
+    raw.textDecoration === "none" ||
+    raw.textDecoration === "underline" ||
+    raw.textDecoration === "line-through"
+  ) {
+    style.textDecoration = raw.textDecoration;
+  }
+  if (
+    raw.textTransform === "none" ||
+    raw.textTransform === "uppercase" ||
+    raw.textTransform === "lowercase" ||
+    raw.textTransform === "capitalize"
+  ) {
+    style.textTransform = raw.textTransform;
+  }
+  if (
+    raw.script === "normal" ||
+    raw.script === "super" ||
+    raw.script === "sub"
+  ) {
+    style.script = raw.script;
+  }
+  if (typeof raw.color === "string") style.color = raw.color;
+  if (raw.gradient === null) style.gradient = null;
+  else if (typeof raw.gradient === "string") style.gradient = raw.gradient;
+  if (raw.highlight === null) style.highlight = null;
+  else if (typeof raw.highlight === "string") style.highlight = raw.highlight;
+  if (typeof raw.strokeColor === "string") style.strokeColor = raw.strokeColor;
+  if (typeof raw.strokeWidth === "number" && Number.isFinite(raw.strokeWidth)) {
+    style.strokeWidth = Math.max(0, raw.strokeWidth);
+  }
+  if (
+    typeof raw.letterSpacing === "number" &&
+    Number.isFinite(raw.letterSpacing)
+  ) {
+    style.letterSpacing = raw.letterSpacing;
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function parseTextRuns(raw: unknown): TextRun[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const runs: TextRun[] = [];
+  for (const item of raw) {
+    if (!isPlainObject(item)) continue;
+    const text = typeof item.text === "string" ? item.text : "";
+    runs.push({ text, style: parseTextRunStyle(item.style) });
+  }
+  return runs;
 }
 
 function parseMaskText(raw: unknown): MaskTextProps | undefined {

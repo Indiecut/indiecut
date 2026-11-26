@@ -25,4 +25,28 @@ describe("buildChatTail", () => {
     assert.match(tail[3]!.summary, /Action Card/);
     assert.match(tail[3]!.summary, /restored checkpoint cp1/);
   });
+
+  it("notes reference images on user turns", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        content: "match this style",
+        createdAt: new Date().toISOString(),
+        images: [
+          {
+            id: "img1",
+            name: "ref.jpg",
+            width: 800,
+            height: 600,
+            mimeType: "image/jpeg",
+            base64: "abc",
+          },
+        ],
+      },
+    ];
+    const tail = buildChatTail(messages, 4);
+    assert.match(tail[0]!.summary, /match this style/);
+    assert.match(tail[0]!.summary, /1 reference image attached/);
+  });
 });

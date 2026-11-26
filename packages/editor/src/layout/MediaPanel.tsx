@@ -467,28 +467,39 @@ function MediaContextMenu({
 
 function templateSampleStyle(entry: TextTemplateEntry): CSSProperties {
   const r = entry.recipe;
-  const strokeW = r.strokeWidth ?? 0;
+  const first = entry.defaultRuns?.[0]?.style;
+  const strokeW = first?.strokeWidth ?? r.strokeWidth ?? 0;
   const blur = r.shadowBlur ?? 0;
   const ox = r.shadowOffsetX ?? 0;
   const oy = r.shadowOffsetY ?? 0;
   const shadowColor = r.shadowColor ?? "transparent";
   const bubble = r.bubble;
   const chromeOn = Boolean(bubble && bubble.type && bubble.type !== "none");
+  const color = first?.color ?? r.color ?? "#ffffff";
   return {
-    color: r.color ?? "#ffffff",
-    fontFamily: r.fontFamily,
-    fontWeight: (r.fontWeight as CSSProperties["fontWeight"]) ?? 700,
-    fontStyle: r.fontStyle ?? "normal",
+    color: color === "transparent" ? (first?.strokeColor ?? "#fff") : color,
+    fontFamily: first?.fontFamily ?? r.fontFamily,
+    fontWeight:
+      ((first?.fontWeight ?? r.fontWeight) as CSSProperties["fontWeight"]) ??
+      700,
+    fontStyle: first?.fontStyle ?? r.fontStyle ?? "normal",
     letterSpacing: r.letterSpacing != null ? `${r.letterSpacing}px` : undefined,
+    backgroundImage: first?.gradient ?? undefined,
+    WebkitBackgroundClip: first?.gradient ? "text" : undefined,
+    backgroundClip: first?.gradient ? "text" : undefined,
     WebkitTextStroke:
       strokeW > 0
-        ? `${Math.min(2, strokeW * 0.4)}px ${r.strokeColor ?? "#000000"}`
+        ? `${Math.min(2, strokeW * 0.4)}px ${first?.strokeColor ?? r.strokeColor ?? "#000000"}`
         : undefined,
     textShadow:
       blur > 0 || ox !== 0 || oy !== 0
         ? `${ox * 0.4}px ${oy * 0.4}px ${Math.min(10, blur * 0.5)}px ${shadowColor}`
         : undefined,
-    background: chromeOn ? bubble?.fill : undefined,
+    backgroundColor: first?.highlight
+      ? first.highlight
+      : chromeOn
+        ? bubble?.fill
+        : undefined,
     border:
       chromeOn && (bubble?.strokeWidth ?? 0) > 0
         ? `${Math.min(2, bubble?.strokeWidth ?? 1)}px solid ${bubble?.stroke ?? "#000"}`
@@ -503,7 +514,7 @@ function templateSampleStyle(entry: TextTemplateEntry): CSSProperties {
             : chromeOn
               ? 6
               : undefined,
-    padding: chromeOn ? "6px 10px" : undefined,
+    padding: chromeOn || first?.highlight ? "6px 10px" : undefined,
     boxShadow:
       bubble?.type === "neon-frame"
         ? `0 0 10px ${bubble.stroke}`

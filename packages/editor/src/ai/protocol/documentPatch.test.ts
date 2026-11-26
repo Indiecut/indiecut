@@ -71,6 +71,51 @@ describe("document_patch", () => {
     commitMutationBatch(batch);
   });
 
+  it("sets text.runs and syncs content", () => {
+    seed([
+      {
+        id: "text1",
+        type: "text",
+        locked: false,
+        hidden: false,
+        clips: [textClip()],
+      },
+    ]);
+    const batch = createMutationBatch();
+    const result = executeDocumentPatch(
+      {
+        ops: [
+          {
+            op: "set",
+            target: "clip",
+            clipId: "c1",
+            path: "text.runs",
+            value: [
+              {
+                text: "NEW ",
+                style: { fontWeight: 900, highlight: "#facc15", color: "#0f172a" },
+              },
+              {
+                text: "DROP",
+                style: {
+                  fontWeight: 900,
+                  gradient: "linear-gradient(90deg, #f59e0b 0%, #ec4899 100%)",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      batch,
+    );
+    assert.equal(result.ok, true);
+    const clip = batch.tracks[0]!.clips[0]!;
+    assert.equal(clip.text?.content, "NEW DROP");
+    assert.equal(clip.text?.runs?.length, 2);
+    assert.equal(clip.text?.runs?.[0]?.style?.highlight, "#facc15");
+    assert.match(clip.text?.runs?.[1]?.style?.gradient ?? "", /linear-gradient/);
+  });
+
   it("rejects unknown paths with capability hint", () => {
     seed([
       {

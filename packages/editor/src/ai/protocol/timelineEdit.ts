@@ -18,8 +18,13 @@ import type { Clip, TextProps, Track } from "../../project/types";
 import { findSticker, loadStickerManifest } from "../../stickers/manifest";
 import { frameDurationMs, getEditorStore } from "../../store/editorStore";
 import {
+  normalizeTextProps,
+  replaceContentKeepingBaseStyle,
+} from "../../text/runs";
+import {
   assertEditable,
   isToolResult,
+  mergeText,
   resolveClipId,
 } from "../tools/clipHelpers";
 import { markBatchDirty, type MutationBatch } from "../tools/mutationBatch";
@@ -392,42 +397,65 @@ function executeDelete(
   );
 }
 
+const INSERT_TEXT_STYLE_KEYS = [
+  "content",
+  "runs",
+  "fontSize",
+  "fontFamily",
+  "color",
+  "fontWeight",
+  "align",
+  "fontStyle",
+  "letterSpacing",
+  "lineHeight",
+  "textTransform",
+  "textDecoration",
+  "gradient",
+  "strokeColor",
+  "strokeWidth",
+  "shadowColor",
+  "shadowBlur",
+  "shadowOffsetX",
+  "shadowOffsetY",
+  "retro3DColor",
+] as const;
+
 function parseTextProps(input: Record<string, unknown>): TextProps | ToolResult {
   const preset =
     input.preset === "body" || input.preset === "title"
       ? (input.preset as TextPresetId)
       : "title";
   const base = textPropsForPreset(preset);
-  const next: TextProps = { ...base };
+  const patch: Record<string, unknown> = {};
+  for (const key of INSERT_TEXT_STYLE_KEYS) {
+    if (input[key] !== undefined) patch[key] = input[key];
+  }
 
-  if (typeof input.content === "string") next.content = input.content;
-  if (typeof input.fontSize === "number") next.fontSize = input.fontSize;
-  if (typeof input.fontFamily === "string") next.fontFamily = input.fontFamily;
-  if (typeof input.color === "string") next.color = input.color;
-  if (typeof input.align === "string") {
-    if (
-      input.align === "left" ||
-      input.align === "center" ||
-      input.align === "right"
-    ) {
-      next.align = input.align;
+  // Runs alone: seed content from runs before merge so presets don't leave "Text".
+  if (patch.runs !== undefined && patch.content === undefined) {
+    if (Array.isArray(patch.runs)) {
+      const joined = (patch.runs as Array<{ text?: unknown }>)
+        .map((r) => (typeof r?.text === "string" ? r.text : ""))
+        .join("");
+      if (joined) patch.content = joined;
     }
   }
-  if (
-    typeof input.fontWeight === "string" ||
-    typeof input.fontWeight === "number"
-  ) {
-    next.fontWeight = input.fontWeight as TextProps["fontWeight"];
-  }
 
-  if (!next.content) {
+  const merged = mergeText(base, patch);
+  if (isToolResult(merged)) return merged;
+
+  if (!merged.content) {
     return {
       ok: false,
-      summary: "content is required for insertText",
+      summary: "content or runs required for insertText",
       data: { error: "missing_content" },
     };
   }
-  return next;
+  // Prefer explicit runs when provided; otherwise keep uniform base style on new content.
+  if (patch.runs === undefined && typeof patch.content === "string") {
+    return replaceContentKeepingBaseStyle(merged, merged.content);
+  }
+  return normalizeTextProps(merged);
 }
 
 function executeInsertText(

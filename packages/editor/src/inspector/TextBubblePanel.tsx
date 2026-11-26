@@ -31,6 +31,7 @@ export const DEFAULT_BUBBLE: TextBubbleProps = {
   strokeWidth: 3,
   paddingX: 28,
   paddingY: 16,
+  opacity: 1,
 };
 
 const DEFAULT_FILL_FOR_TYPE: Partial<
@@ -56,6 +57,10 @@ const DEFAULT_FILL_FOR_TYPE: Partial<
 function resolveBubble(text: TextProps): TextBubbleProps {
   const b = text.bubble;
   if (!b) return { ...DEFAULT_BUBBLE };
+  const opacity =
+    typeof b.opacity === "number" && Number.isFinite(b.opacity)
+      ? Math.min(1, Math.max(0, b.opacity))
+      : 1;
   return {
     type: b.type ?? "none",
     fill: b.fill ?? DEFAULT_BUBBLE.fill,
@@ -64,6 +69,7 @@ function resolveBubble(text: TextProps): TextBubbleProps {
     paddingX: b.paddingX ?? DEFAULT_BUBBLE.paddingX,
     paddingY: b.paddingY ?? DEFAULT_BUBBLE.paddingY,
     accentColor: b.accentColor,
+    opacity,
   };
 }
 
@@ -171,6 +177,51 @@ export function TextBubblePanel({ clip, track, text }: Props) {
         onEnd={gesture.end}
         onLive={(hex) => liveBubble({ stroke: hex })}
       />
+
+      <label className="inspector-field">
+        <span className="inspector-field__label">Transparency</span>
+        <div className="inspector-field__controls">
+          <input
+            type="range"
+            className="inspector-slider"
+            min={0}
+            max={100}
+            step={1}
+            disabled={locked || !chromeOn}
+            value={Math.round((1 - (bubble.opacity ?? 1)) * 100)}
+            onPointerDown={gesture.begin}
+            onPointerUp={gesture.end}
+            onChange={(e) => {
+              const transparency = Number(e.target.value);
+              if (!Number.isFinite(transparency)) return;
+              liveBubble({
+                opacity: Math.min(1, Math.max(0, 1 - transparency / 100)),
+              });
+            }}
+          />
+          <input
+            type="number"
+            className="inspector-number"
+            disabled={locked || !chromeOn}
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round((1 - (bubble.opacity ?? 1)) * 100)}
+            onFocus={gesture.begin}
+            onBlur={gesture.end}
+            onChange={(e) => {
+              const transparency = Number(e.target.value);
+              if (!Number.isFinite(transparency)) return;
+              liveBubble({
+                opacity: Math.min(
+                  1,
+                  Math.max(0, 1 - Math.min(100, Math.max(0, transparency)) / 100),
+                ),
+              });
+            }}
+          />
+        </div>
+      </label>
 
       <label className="inspector-field">
         <span className="inspector-field__label">Stroke width</span>

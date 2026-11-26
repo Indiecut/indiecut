@@ -107,6 +107,37 @@ describe("timeline_edit protocol", () => {
         t.clips.some((c) => c.text?.content === "New title"),
       ),
     );
+
+    batch = createMutationBatch();
+    result = await executeTimelineEdit(
+      {
+        action: "insertText",
+        startMs: 12_000,
+        runs: [
+          { text: "Sale ", style: { color: "#fff", fontWeight: 700 } },
+          {
+            text: "50%",
+            style: {
+              color: "#facc15",
+              fontWeight: 900,
+              highlight: "#7c2d12",
+            },
+          },
+        ],
+        fontSize: 72,
+        strokeWidth: 4,
+        strokeColor: "#000",
+      },
+      batch,
+    );
+    assert.equal(result.ok, true);
+    const inserted = batch.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.text?.content === "Sale 50%");
+    assert.ok(inserted);
+    assert.equal(inserted!.text?.runs?.length, 2);
+    assert.equal(inserted!.text?.fontSize, 72);
+    assert.equal(inserted!.text?.strokeWidth, 4);
   });
 
   it("confirm gate still fires for multi-delete", () => {

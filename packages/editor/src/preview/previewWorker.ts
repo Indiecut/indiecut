@@ -472,7 +472,14 @@ function getTextLayer(
         const raster =
           layout.granularity === "whole"
             ? rasterizeText(layer.text as TextProps, pixelRatio)
-            : rasterizeTextUnit(layer.text, u.text, pixelRatio);
+            : rasterizeTextUnit(
+                layer.text,
+                u.text,
+                pixelRatio,
+                u.startIndex != null && u.endIndex != null
+                  ? { startIndex: u.startIndex, endIndex: u.endIndex }
+                  : undefined,
+              );
         if (!raster) continue;
         cached = {
           canvas: raster.canvas,

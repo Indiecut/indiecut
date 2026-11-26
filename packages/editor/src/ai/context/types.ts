@@ -1,4 +1,5 @@
 import type { ClipKind, TrackType } from "../../project/types";
+import type { AiTextSummary } from "./textSummary";
 
 export type AiSkillId =
   | "timeline"
@@ -29,20 +30,7 @@ export type AiClipSummary = {
   };
   opacity?: number;
   blendMode?: string;
-  text?: {
-    content: string;
-    fontSize?: number;
-    fontFamily?: string;
-    color?: string;
-    align?: string;
-    fontWeight?: number | string;
-    letterSpacing?: number;
-    textTransform?: string;
-    strokeColor?: string;
-    strokeWidth?: number;
-    shadowColor?: string;
-    shadowBlur?: number;
-  };
+  text?: AiTextSummary;
   animation?: Record<string, unknown> | null;
   stickerId?: string;
   stickerStyle?: Record<string, unknown>;
@@ -105,6 +93,18 @@ export type CheapCompositeAttachment = {
   width: number;
   height: number;
   mimeType: string;
+  /** Base64 (no data: prefix). */
+  base64: string;
+};
+
+/** User-uploaded reference image (already downscaled for the API). */
+export type UserReferenceAttachment = {
+  kind: "user_reference";
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
   /** Base64 (no data: prefix). */
   base64: string;
 };

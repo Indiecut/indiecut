@@ -1,4 +1,10 @@
 import type { TextBubbleProps, TextProps } from "../project/types";
+import { normalizeTextProps } from "../text/runs";
+import {
+  measureRichTextSize,
+  rasterizeRichText,
+  shouldUseRichTextPath,
+} from "./richTextLayout";
 
 export type RasterizedText = {
   canvas: OffscreenCanvas;
@@ -34,6 +40,8 @@ export type ResolvedBubble = {
   paddingX: number;
   paddingY: number;
   accentColor?: string;
+  /** Shape chrome opacity 0–1. */
+  opacity: number;
   /** Extra height below bubble for speech tail (device px). */
   tailH: number;
 };
@@ -44,7 +52,7 @@ export type ResolvedTextPaint = {
   fontSize: number;
   fontWeight: number | string;
   fontStyle: "normal" | "italic";
-  textDecoration: "none" | "underline";
+  textDecoration: "none" | "underline" | "line-through";
   color: string;
   /** Parsed CSS linear-gradient; null = flat color fill. */
   gradient: ParsedLinearGradient | null;
@@ -130,7 +138,7 @@ export function formatLinearGradientCss(
   return `linear-gradient(${Math.round(angleDeg)}deg, ${from} 0%, ${to} 100%)`;
 }
 
-function createFillGradient(
+export function createFillGradient(
   ctx: Ctx2d,
   g: ParsedLinearGradient,
   x: number,
@@ -184,6 +192,11 @@ function resolveBubble(
       : type === "thought-cloud"
         ? Math.ceil(SPEECH_TAIL_H * 1.4 * pr)
         : 0;
+  const opacityRaw = b.opacity;
+  const opacity =
+    typeof opacityRaw === "number" && Number.isFinite(opacityRaw)
+      ? Math.min(1, Math.max(0, opacityRaw))
+      : 1;
   return {
     type,
     fill: b.fill || "#ffffff",
@@ -192,6 +205,7 @@ function resolveBubble(
     paddingX: Math.max(0, (b.paddingX ?? 12) * pr),
     paddingY: Math.max(0, (b.paddingY ?? 8) * pr),
     accentColor: b.accentColor,
+    opacity,
     tailH,
   };
 }
@@ -236,15 +250,20 @@ export function resolveText(props: TextProps, pixelRatio = 1): ResolvedTextPaint
     retro3DDepth + (retro3DDepth > 0 ? Math.ceil(2 * pr) : 0),
     neonGlowPad,
   );
-  const underline =
-    (props.textDecoration ?? "none") === "underline";
+  const deco = props.textDecoration ?? "none";
+  const underline = deco === "underline";
   return {
     content: applyTextTransform(props.content || "", props.textTransform),
     fontFamily: props.fontFamily || "system-ui, sans-serif",
     fontSize: Math.max(8, (props.fontSize ?? 48) * pr),
     fontWeight: props.fontWeight ?? DEFAULT_TEXT_FONT_WEIGHT,
     fontStyle: props.fontStyle === "italic" ? "italic" : "normal",
-    textDecoration: underline ? "underline" : "none",
+    textDecoration:
+      deco === "underline"
+        ? "underline"
+        : deco === "line-through"
+          ? "line-through"
+          : "none",
     color: props.color || "#ffffff",
     gradient: parseLinearGradientCss(props.gradient),
     align: props.align || "center",
@@ -590,10 +609,27 @@ export function paintBubble(
   bubble: ResolvedBubble,
 ): void {
   if (bubble.type === "none") return;
-  const { x, y, w, h } = rect;
-  if (w <= 0 || h <= 0) return;
+  if (rect.w <= 0 || rect.h <= 0) return;
+  if (bubble.opacity <= 0) return;
 
   clearShadow(ctx);
+  const prevAlpha = ctx.globalAlpha;
+  if (bubble.opacity < 1) {
+    ctx.globalAlpha = prevAlpha * bubble.opacity;
+  }
+  try {
+    paintBubbleChrome(ctx, rect, bubble);
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+  }
+}
+
+function paintBubbleChrome(
+  ctx: Ctx2d,
+  rect: { x: number; y: number; w: number; h: number },
+  bubble: ResolvedBubble,
+): void {
+  const { x, y, w, h } = rect;
   const type = bubble.type;
 
   if (type === "comic-burst" || type === "star-badge") {
@@ -854,28 +890,36 @@ export function textPropsFingerprint(
   pixelRatio = 1,
 ): string {
   if (!props) return "";
-  const t = resolveText(props, 1);
-  const b = props.bubble;
+  const normalized = normalizeTextProps(props);
+  const t = resolveText(normalized, 1);
+  const b = normalized.bubble;
+  const runsKey = (normalized.runs ?? [])
+    .map(
+      (r) =>
+        `${r.text}\u001f${r.style ? JSON.stringify(r.style) : ""}`,
+    )
+    .join("\u001e");
   return [
     t.content,
+    runsKey,
     t.fontFamily,
-    props.fontSize ?? 48,
+    normalized.fontSize ?? 48,
     t.fontWeight,
     t.fontStyle,
     t.textDecoration,
-    props.textTransform ?? "none",
+    normalized.textTransform ?? "none",
     t.color,
-    props.gradient ?? "",
+    normalized.gradient ?? "",
     t.align,
     t.letterSpacing,
     t.lineHeightMul ?? "",
     t.strokeColor,
-    props.strokeWidth ?? 0,
+    normalized.strokeWidth ?? 0,
     t.shadow ? 1 : 0,
     t.shadowColor,
-    props.shadowBlur ?? 0,
-    props.shadowOffsetX ?? 0,
-    props.shadowOffsetY ?? 0,
+    normalized.shadowBlur ?? 0,
+    normalized.shadowOffsetX ?? 0,
+    normalized.shadowOffsetY ?? 0,
     t.retro3DColor ?? "",
     b?.type ?? "",
     b?.fill ?? "",
@@ -884,6 +928,7 @@ export function textPropsFingerprint(
     b?.paddingX ?? "",
     b?.paddingY ?? "",
     b?.accentColor ?? "",
+    b?.opacity ?? 1,
     pixelRatio.toFixed(3),
   ].join("|");
 }
@@ -899,7 +944,11 @@ function measureTextSizeAt(
   props: TextProps,
   pixelRatio: number,
 ): { width: number; height: number } | null {
-  const t = resolveText(props, pixelRatio);
+  const normalized = normalizeTextProps(props);
+  if (shouldUseRichTextPath(normalized)) {
+    return measureRichTextSize(normalized, pixelRatio);
+  }
+  const t = resolveText(normalized, pixelRatio);
   if (!t.content.trim()) return null;
 
   // Prefer a document canvas on the main thread so measureText sees
@@ -970,11 +1019,16 @@ export function rasterizeText(
   props: TextProps,
   pixelRatio = 1,
 ): RasterizedText | null {
-  const logical = measureTextSizeAt(props, 1);
+  const normalized = normalizeTextProps(props);
+  if (shouldUseRichTextPath(normalized)) {
+    return rasterizeRichText(normalized, pixelRatio);
+  }
+
+  const logical = measureTextSizeAt(normalized, 1);
   if (!logical) return null;
 
-  const t = resolveText(props, pixelRatio);
-  const size = measureTextSizeAt(props, pixelRatio);
+  const t = resolveText(normalized, pixelRatio);
+  const size = measureTextSizeAt(normalized, pixelRatio);
   if (!size) return null;
   let { width, height } = size;
   const lines = t.content.split("\n");

@@ -15,6 +15,7 @@ const BASE_SYSTEM_PROMPT = [
   "Use inspect only when the context pack is insufficient; use stage_capture when you need a fresh vision plate.",
   "Destructive / review ops: call the tool; the host may require Confirm / Run plan before applying.",
   "After edits, briefly summarize what changed and mention the Action Card Restore control.",
+  "Text clips support rich runs (text.runs): per-span font, color, gradient, stroke, highlight — invent styles; no template catalog.",
   "For readability on text: prefer off-white or high-contrast colors, soft shadow, stroke if needed.",
   "Before tool calls, write one short plain sentence (under ~12 words) describing what you are doing — no step numbers.",
 ].join(" ");

@@ -4,7 +4,15 @@ import {
   runChatTurn,
   type AgentProgressEvent,
 } from "../agent/runChatTurn";
-import type { ChatInteractionMode, VisionMode } from "../context/types";
+import {
+  downscaleUserImage,
+  MAX_USER_REFERENCE_IMAGES,
+} from "../context/downscaleUserImage";
+import type {
+  ChatInteractionMode,
+  UserReferenceAttachment,
+  VisionMode,
+} from "../context/types";
 import {
   capMessages,
   createMessageId,
@@ -17,6 +25,7 @@ import {
   type ChatAgentStep,
   type ChatMessage,
   type ChatPendingPlan,
+  type ChatUserImage,
 } from "../persistence/chatTranscript";
 import {
   getAiSecretsCached,
@@ -33,6 +42,8 @@ type ChatStoreState = {
   streaming: boolean;
   error: string | null;
   draft: string;
+  /** Pending downscaled reference images for the next send. */
+  draftImages: UserReferenceAttachment[];
   modelId: ClaudeModelId;
   visionMode: VisionMode;
   /** Agent (default) can edit; Ask is suggestions only. */
@@ -40,6 +51,9 @@ type ChatStoreState = {
   abortController: AbortController | null;
 
   setDraft: (text: string) => void;
+  addDraftImages: (files: FileList | File[]) => Promise<void>;
+  removeDraftImage: (id: string) => void;
+  clearDraftImages: () => void;
   setModelId: (id: ClaudeModelId) => void;
   setVisionMode: (mode: VisionMode) => void;
   setChatMode: (mode: ChatInteractionMode) => void;
@@ -98,12 +112,55 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   streaming: false,
   error: null,
   draft: "",
+  draftImages: [],
   modelId: getClaudeModelId(),
   visionMode: "auto",
   chatMode: "agent",
   abortController: null,
 
   setDraft: (text) => set({ draft: text }),
+
+  addDraftImages: async (files) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    const room = MAX_USER_REFERENCE_IMAGES - get().draftImages.length;
+    if (room <= 0) {
+      set({
+        error: `You can attach up to ${MAX_USER_REFERENCE_IMAGES} reference images.`,
+      });
+      return;
+    }
+    const toAdd = list.slice(0, room);
+    try {
+      const downscaled: UserReferenceAttachment[] = [];
+      for (const file of toAdd) {
+        downscaled.push(await downscaleUserImage(file));
+      }
+      set((s) => ({
+        draftImages: [...s.draftImages, ...downscaled].slice(
+          0,
+          MAX_USER_REFERENCE_IMAGES,
+        ),
+        error: null,
+      }));
+      if (list.length > room) {
+        set({
+          error: `Only ${MAX_USER_REFERENCE_IMAGES} reference images can be attached — extras were skipped.`,
+        });
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not process image";
+      set({ error: message });
+    }
+  },
+
+  removeDraftImage: (id) =>
+    set((s) => ({
+      draftImages: s.draftImages.filter((img) => img.id !== id),
+    })),
+
+  clearDraftImages: () => set({ draftImages: [] }),
 
   setModelId: (id) => set({ modelId: id }),
 
@@ -128,6 +185,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         streaming: false,
         error: null,
         draft: "",
+        draftImages: [],
         abortController: null,
         modelId: getClaudeModelId(),
       });
@@ -140,6 +198,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       streaming: false,
       error: null,
       draft: "",
+      draftImages: [],
       abortController: null,
       modelId: getClaudeModelId(),
     });
@@ -157,6 +216,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       streaming: false,
       error: null,
       draft: "",
+      draftImages: [],
       abortController: null,
     });
   },
@@ -329,7 +389,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   sendMessage: async () => {
     const state = get();
     const text = state.draft.trim();
-    if (!text || state.streaming) return;
+    const draftImages = state.draftImages.slice(0, MAX_USER_REFERENCE_IMAGES);
+    if ((!text && draftImages.length === 0) || state.streaming) return;
     if (!hasAnthropicKey()) {
       set({ error: "Add an Anthropic API key in AI settings to chat." });
       return;
@@ -340,11 +401,24 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     // Drop greyed-out post-restore turns — they can't stay in history.
     const kept = dropStaleMessages(state.messages);
 
+    const images: ChatUserImage[] | undefined =
+      draftImages.length > 0
+        ? draftImages.map((img) => ({
+            id: img.id,
+            name: img.name,
+            width: img.width,
+            height: img.height,
+            mimeType: img.mimeType,
+            base64: img.base64,
+          }))
+        : undefined;
+
     const userMsg: ChatMessage = {
       id: createMessageId(),
       role: "user",
       content: text,
       createdAt: new Date().toISOString(),
+      images,
     };
     const assistantId = createMessageId();
     const assistantMsg: ChatMessage = {
@@ -359,6 +433,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const controller = new AbortController();
     set({
       draft: "",
+      draftImages: [],
       error: null,
       streaming: true,
       abortController: controller,
@@ -371,6 +446,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         model: state.modelId,
         historyMessages,
         userText: text,
+        userImages: draftImages,
         projectPath: state.projectPath,
         visionMode: state.visionMode,
         mode: state.chatMode,

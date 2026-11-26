@@ -40,6 +40,19 @@ describe("capability catalog", () => {
     assert.ok(desc.schema);
   });
 
+  it("describes clip.text with runs and recipe", async () => {
+    const desc = await describeCapability("clip.text");
+    assert.ok(desc);
+    assert.equal(desc.id, "clip.text");
+    const schema = JSON.stringify(desc.schema);
+    assert.match(schema, /runs/);
+    assert.match(schema, /gradient/);
+    assert.match(schema, /highlight/);
+    const recipe = String(desc.recipe ?? "");
+    assert.match(recipe, /text\.runs/);
+    assert.doesNotMatch(recipe, /template catalog|500 templates/i);
+  });
+
   it("exposes exactly 7 Anthropic protocol tools", () => {
     const tools = getAnthropicTools();
     assert.equal(tools.length, 7);
