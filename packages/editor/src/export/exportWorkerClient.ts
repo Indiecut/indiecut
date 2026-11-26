@@ -14,7 +14,7 @@ type FrameWaiter = {
 
 /**
  * One export worker + its StreamTarget IPC stream id.
- * Multiple sessions can run in parallel for segment-parallel export.
+ * Long exports reuse a single session across sequential ~5s segments.
  */
 export class ExportWorkerSession {
   private worker: Worker | null = null;

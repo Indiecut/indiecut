@@ -249,7 +249,12 @@ export function Header() {
         <button
           type="button"
           className="app-header__export"
-          onClick={() => setExportOpen(true)}
+          onClick={() => {
+            const st = useEditorStore.getState();
+            // Finished export left phase at "done" — open fresh settings.
+            if (st.exportPhase === "done") st.resetExportSession();
+            setExportOpen(true);
+          }}
         >
           Export
         </button>

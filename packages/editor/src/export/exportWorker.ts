@@ -136,6 +136,8 @@ function qualityFromConfig(config: ExportQualityConfig): Quality {
   return new Quality(config.name);
 }
 
+type VideoEncodeAccel = "prefer-hardware" | "prefer-software";
+
 type EncodeSession = {
   output: Output;
   videoSource: CanvasSource;
@@ -145,6 +147,10 @@ type EncodeSession = {
   layoutWidth: number;
   layoutHeight: number;
   cancelled: boolean;
+  /** Starts as hardware; may flip to software after first-frame fallback. */
+  videoAccel: VideoEncodeAccel;
+  encodedFrameCount: number;
+  beginArgs: Extract<ExportWorkerRequest, { type: "beginEncode" }>;
 };
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -989,6 +995,73 @@ async function drawExportFrame(
   }
 }
 
+async function startEncodePipeline(
+  msg: Extract<ExportWorkerRequest, { type: "beginEncode" }>,
+  videoAccel: VideoEncodeAccel,
+): Promise<EncodeSession> {
+  if (!stage) {
+    throw new Error("Export stage not initialized");
+  }
+
+  const target = new StreamTarget(createStreamWritable(), {
+    chunked: true,
+    chunkSize: 16 * 1024 * 1024,
+  });
+  const output = new Output({
+    format: new Mp4OutputFormat(),
+    target,
+  });
+
+  const videoSource = new CanvasSource(stage, {
+    codec: "avc",
+    quality: qualityFromConfig(msg.videoQuality),
+    hardwareAcceleration: videoAccel,
+  });
+  output.addVideoTrack(videoSource, { frameRate: msg.fps });
+
+  let audioSource: AudioSampleSource | null = null;
+  if (msg.audio && msg.audio.pcm.length > 0) {
+    const { sampleRate, numberOfChannels, pcm, audioQuality } = msg.audio;
+    audioSource = new AudioSampleSource({
+      codec: "aac",
+      quality: qualityFromConfig(audioQuality),
+    });
+    output.addAudioTrack(audioSource);
+    await output.start();
+    await addPcmAsAudioSamples(audioSource, pcm, sampleRate, numberOfChannels);
+    audioSource.close();
+  } else {
+    await output.start();
+  }
+
+  return {
+    output,
+    videoSource,
+    audioSource,
+    fps: msg.fps,
+    totalFrames: msg.totalFrames,
+    layoutWidth: msg.layoutWidth,
+    layoutHeight: msg.layoutHeight,
+    cancelled: false,
+    videoAccel,
+    encodedFrameCount: 0,
+    beginArgs: msg,
+  };
+}
+
+async function abandonEncodeSession(session: EncodeSession): Promise<void> {
+  try {
+    session.videoSource.close();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await session.output.cancel();
+  } catch {
+    /* ignore */
+  }
+}
+
 async function handleBeginEncode(
   msg: Extract<ExportWorkerRequest, { type: "beginEncode" }>,
 ) {
@@ -1010,54 +1083,32 @@ async function handleBeginEncode(
   textUnitCache.clear();
   emitPreview = Boolean(msg.emitPreview);
 
-  const target = new StreamTarget(createStreamWritable(), {
-    chunked: true,
-    chunkSize: 16 * 1024 * 1024,
-  });
-  const output = new Output({
-    format: new Mp4OutputFormat(),
-    target,
-  });
+  // Always try hardware first; first-frame failure falls back to software once.
+  encodeSession = await startEncodePipeline(msg, "prefer-hardware");
+}
 
-  const videoSource = new CanvasSource(stage, {
-    codec: "avc",
-    quality: qualityFromConfig(msg.videoQuality),
-    // Software encode avoids competing with decode for IOSurface backing.
-    hardwareAcceleration: "prefer-software",
-  });
-  output.addVideoTrack(videoSource, { frameRate: msg.fps });
-
-  let audioSource: AudioSampleSource | null = null;
-  if (msg.audio && msg.audio.pcm.length > 0) {
-    const { sampleRate, numberOfChannels, pcm, audioQuality } = msg.audio;
-    audioSource = new AudioSampleSource({
-      codec: "aac",
-      quality: qualityFromConfig(audioQuality),
-    });
-    output.addAudioTrack(audioSource);
-    await output.start();
-    await addPcmAsAudioSamples(audioSource, pcm, sampleRate, numberOfChannels);
-    audioSource.close();
-  } else {
-    await output.start();
-  }
-
-  encodeSession = {
-    output,
-    videoSource,
-    audioSource,
-    fps: msg.fps,
-    totalFrames: msg.totalFrames,
-    layoutWidth: msg.layoutWidth,
-    layoutHeight: msg.layoutHeight,
-    cancelled: false,
-  };
+async function encodeDrawnFrame(
+  session: EncodeSession,
+  frameIndex: number,
+  layers: Extract<ExportWorkerRequest, { type: "encodeFrame" }>["layers"],
+): Promise<void> {
+  await drawExportFrame(
+    layers,
+    session.fps,
+    session.layoutWidth,
+    session.layoutHeight,
+  );
+  const timestamp = frameIndex / session.fps;
+  const duration = 1 / session.fps;
+  await session.videoSource.add(timestamp, duration);
+  session.encodedFrameCount += 1;
+  await maybeEmitPreview(frameIndex);
 }
 
 async function handleEncodeFrame(
   msg: Extract<ExportWorkerRequest, { type: "encodeFrame" }>,
 ) {
-  const session = encodeSession;
+  let session = encodeSession;
   if (!session || session.cancelled) {
     post({
       type: "failure",
@@ -1067,19 +1118,39 @@ async function handleEncodeFrame(
     return;
   }
   try {
-    await drawExportFrame(
-      msg.layers,
-      session.fps,
-      session.layoutWidth,
-      session.layoutHeight,
-    );
-    const timestamp = msg.frameIndex / session.fps;
-    const duration = 1 / session.fps;
-    await session.videoSource.add(timestamp, duration);
-    await maybeEmitPreview(msg.frameIndex);
+    await encodeDrawnFrame(session, msg.frameIndex, msg.layers);
     releaseAllExportCanvases();
     post({ type: "frameDone", frameIndex: msg.frameIndex });
   } catch (err) {
+    // Hardware reported supported but failed on first frame — retry software once.
+    if (
+      session.encodedFrameCount === 0 &&
+      session.videoAccel === "prefer-hardware" &&
+      !session.cancelled
+    ) {
+      try {
+        await abandonEncodeSession(session);
+        encodeSession = null;
+        encodeSession = await startEncodePipeline(
+          session.beginArgs,
+          "prefer-software",
+        );
+        session = encodeSession;
+        await encodeDrawnFrame(session, msg.frameIndex, msg.layers);
+        releaseAllExportCanvases();
+        post({ type: "frameDone", frameIndex: msg.frameIndex });
+        return;
+      } catch (retryErr) {
+        releaseAllExportCanvases();
+        post({
+          type: "failure",
+          frameIndex: msg.frameIndex,
+          error:
+            retryErr instanceof Error ? retryErr.message : String(retryErr),
+        });
+        return;
+      }
+    }
     releaseAllExportCanvases();
     post({
       type: "failure",

@@ -238,6 +238,9 @@ export function ExportModal() {
     if (phase === "interrupted") {
       void discardCheckpoint(draft);
       resetExportSession();
+    } else if (phase === "done") {
+      // Clear success state so the next Export click opens settings again.
+      resetExportSession();
     }
     setExportOpen(false);
   };
@@ -484,6 +487,7 @@ export function ExportModal() {
                       <option value="720P">720P</option>
                       <option value="1080P">1080P</option>
                       <option value="2K">2K</option>
+                      <option value="4K">4K</option>
                     </select>
                   </label>
 
@@ -801,7 +805,7 @@ export function ExportModal() {
               <button
                 type="button"
                 className="export-modal__btn export-modal__btn--primary"
-                onClick={() => setExportOpen(false)}
+                onClick={closeModal}
               >
                 Close
               </button>
