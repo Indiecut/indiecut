@@ -175,7 +175,7 @@ const SKILL_RUN_SCHEMA = {
     skill: {
       type: "string",
       description:
-        "Skill id e.g. image.generate, image.editFrame, voice.generate, captions.auto",
+        "Skill id e.g. image.generate, image.editFrame, voice.generate, sfx.generate, captions.auto",
     },
     input: { type: "object" },
     prompt: { type: "string" },
@@ -295,7 +295,7 @@ function buildProtocolTools(): RegisteredTool[] {
     {
       name: "skill_run",
       description:
-        "Run a gated skill: image.generate, image.editFrame, voice.generate, captions.auto.",
+        "Run a gated skill: image.generate, image.editFrame, voice.generate, sfx.generate, captions.auto.",
       input_schema: SKILL_RUN_SCHEMA,
       mutates: true,
       handler: (input, ctx) => executeSkillRun(input, ctx.batch, ctx.signal),

@@ -43,6 +43,7 @@ function skillAvailable(
   if (!def.skill) return true;
   if (def.skill.startsWith("image.")) return Boolean(opts.imageGemini);
   if (def.skill.startsWith("voice.")) return Boolean(opts.voiceElevenlabs);
+  if (def.skill.startsWith("sfx.")) return Boolean(opts.sfxElevenlabs);
   return true;
 }
 

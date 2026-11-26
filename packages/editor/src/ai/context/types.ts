@@ -6,6 +6,7 @@ export type AiSkillId =
   | "image.generate"
   | "image.editFrame"
   | "voice.generate"
+  | "sfx.generate"
   | "captions.auto"
   | string;
 

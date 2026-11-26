@@ -24,6 +24,7 @@ export type CapabilityDomain =
   | "vision"
   | "skill.image"
   | "skill.voice"
+  | "skill.sfx"
   | `plugin.${string}`;
 
 /** Compact row returned by capabilities_list. */
@@ -62,4 +63,6 @@ export type CapabilityDefinition = {
 export type CatalogBuildOpts = {
   imageGemini?: boolean;
   voiceElevenlabs?: boolean;
+  /** Sound effects — ElevenLabs API key only (no Voice ID). */
+  sfxElevenlabs?: boolean;
 };

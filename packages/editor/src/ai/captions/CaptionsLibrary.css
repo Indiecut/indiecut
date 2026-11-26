@@ -19,6 +19,17 @@
   flex-shrink: 0;
 }
 
+.captions-library__toolbar-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.captions-library__toolbar-fields .captions-library__field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 .captions-library__toolbar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -27,6 +38,13 @@
 
 .captions-library__field--inline {
   gap: 4px;
+}
+
+.captions-library__hint {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.9;
 }
 
 .captions-library__intro {

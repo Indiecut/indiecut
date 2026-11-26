@@ -11,7 +11,7 @@ const BASE_SYSTEM_PROMPT = [
   "Prefer selected clips when the user says “this”, “the title”, or is otherwise ambiguous.",
   "Use document_patch for properties, keyframes, and project/session settings.",
   "Use timeline_edit for structural ops (move, trim, split, delete, insert).",
-  "Use skill_run for generate/TTS/auto-captions when those skills are listed as available.",
+  "Use skill_run for generate/TTS/SFX/auto-captions when those skills are listed as available.",
   "Use inspect only when the context pack is insufficient; use stage_capture when you need a fresh vision plate.",
   "Destructive / review ops: call the tool; the host may require Confirm / Run plan before applying.",
   "After edits, briefly summarize what changed and mention the Action Card Restore control.",
@@ -46,11 +46,18 @@ const VOICE_AVAILABLE =
 const VOICE_UNAVAILABLE =
   "Voiceover (ElevenLabs) is not configured — if the user asks for voiceover/TTS, tell them to add an ElevenLabs API key and Voice ID in Settings → AI.";
 
+const SFX_AVAILABLE =
+  "Sound effects skill (ElevenLabs) is available via skill_run with skill sfx.generate (API key only; no Voice ID).";
+
+const SFX_UNAVAILABLE =
+  "Sound effects (ElevenLabs) are unavailable — if the user asks for SFX/Foley, tell them to add an ElevenLabs API key and pass Test (SFX) in Settings → AI.";
+
 export function buildSystemPrompt(opts: CatalogBuildOpts): string {
   return [
     BASE_SYSTEM_PROMPT,
     opts.imageGemini ? IMAGE_AVAILABLE : IMAGE_UNAVAILABLE,
     opts.voiceElevenlabs ? VOICE_AVAILABLE : VOICE_UNAVAILABLE,
+    opts.sfxElevenlabs ? SFX_AVAILABLE : SFX_UNAVAILABLE,
     "",
     formatDomainIndexForPrompt(opts),
   ].join("\n");

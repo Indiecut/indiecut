@@ -47,12 +47,19 @@ function normalize(raw: AiSecretsV1 | null | undefined): AiSecretsV1 {
     raw.claudeModelId === "claude-haiku-5-5"
       ? "claude-haiku-5-5"
       : DEFAULT_CLAUDE_MODEL;
+  const elevenLabsSfxOk =
+    raw.elevenLabsSfxOk === true
+      ? true
+      : raw.elevenLabsSfxOk === false
+        ? false
+        : undefined;
   return {
     version: 1,
     anthropicKey: trimOrUndef(raw.anthropicKey),
     geminiKey: trimOrUndef(raw.geminiKey),
     elevenLabsKey: trimOrUndef(raw.elevenLabsKey),
     elevenLabsVoiceId: trimOrUndef(raw.elevenLabsVoiceId),
+    elevenLabsSfxOk,
     claudeModelId,
   };
 }
@@ -75,9 +82,22 @@ export function hasGeminiKey(): boolean {
   return Boolean(cache.geminiKey);
 }
 
-/** Voice skill requires both API key and Voice ID. */
+/** True when an ElevenLabs API key is present. */
+export function hasElevenLabsKey(): boolean {
+  return Boolean(cache.elevenLabsKey);
+}
+
+/** Voiceover skill requires both API key and Voice ID. */
 export function hasElevenLabsVoice(): boolean {
   return Boolean(cache.elevenLabsKey && cache.elevenLabsVoiceId);
+}
+
+/**
+ * Sound effects skill: API key present and last SFX probe did not fail.
+ * Untested (`undefined`) stays allowed; failed Test sets `elevenLabsSfxOk: false`.
+ */
+export function hasElevenLabsSfx(): boolean {
+  return Boolean(cache.elevenLabsKey) && cache.elevenLabsSfxOk !== false;
 }
 
 export function getClaudeModelId(): ClaudeModelId {

@@ -5,7 +5,8 @@ registerCapability({
   id: "captions.auto",
   domain: "captions",
   title: "Auto captions",
-  summary: "Run Whisper auto-caption job on timeline speech",
+  summary:
+    "Run auto-caption job on timeline speech (Whisper on-device, or ElevenLabs when configured)",
   verbs: ["skill"],
   targets: ["captions", "timeline"],
   risk: "skill",
@@ -13,8 +14,12 @@ registerCapability({
   schema: z.object({
     skill: z.literal("captions.auto"),
     language: z.string().optional(),
+    provider: z.enum(["whisper", "elevenlabs"]).optional(),
   }),
-  constraints: ["Requires audible speech on the timeline"],
+  constraints: [
+    "Requires audible speech on the timeline",
+    "provider=elevenlabs requires an ElevenLabs API key in Settings → AI → Voice",
+  ],
 });
 
 registerCapability({

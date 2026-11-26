@@ -48,7 +48,11 @@ import {
   type PendingPlan,
 } from "../tools/confirmGate";
 import { writeActionThumb } from "../tools/actionThumbs";
-import { hasElevenLabsVoice, hasGeminiKey } from "../secrets/aiSecrets";
+import {
+  hasElevenLabsSfx,
+  hasElevenLabsVoice,
+  hasGeminiKey,
+} from "../secrets/aiSecrets";
 import { progressTitleFromText } from "./progressTitle";
 import {
   buildAskSystemPrompt,
@@ -653,7 +657,8 @@ export async function runChatTurn(
     opts.mode === "ask" ? "ask" : "agent";
   const imageGemini = hasGeminiKey();
   const voiceElevenlabs = hasElevenLabsVoice();
-  const catalogOpts = { imageGemini, voiceElevenlabs };
+  const sfxElevenlabs = hasElevenLabsSfx();
+  const catalogOpts = { imageGemini, voiceElevenlabs, sfxElevenlabs };
   const system = [
     interactionMode === "ask"
       ? buildAskSystemPrompt()

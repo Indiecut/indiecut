@@ -6,7 +6,11 @@ import {
   listAvailableDomains,
   listAvailableSkills,
 } from "../catalog";
-import { hasElevenLabsVoice, hasGeminiKey } from "../secrets/aiSecrets";
+import {
+  hasElevenLabsSfx,
+  hasElevenLabsVoice,
+  hasGeminiKey,
+} from "../secrets/aiSecrets";
 import { buildChatTail } from "./chatTail";
 import { summarizeTextProps } from "./textSummary";
 import type {
@@ -199,6 +203,7 @@ export function assembleContextPack(
   const catalogOpts = {
     imageGemini: hasGeminiKey(),
     voiceElevenlabs: hasElevenLabsVoice(),
+    sfxElevenlabs: hasElevenLabsSfx(),
   };
   const availableSkills: AiSkillId[] = [
     "timeline",

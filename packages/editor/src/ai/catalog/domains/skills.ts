@@ -54,3 +54,38 @@ registerCapability({
     trackId: z.string().optional(),
   }),
 });
+
+registerCapability({
+  id: "skill.sfx.generate",
+  domain: "skill.sfx",
+  title: "Generate sound effect",
+  summary:
+    "ElevenLabs text-to-SFX → import audio clip (API key only; no Voice ID)",
+  verbs: ["skill"],
+  targets: ["media", "timeline"],
+  risk: "skill",
+  skill: "sfx.generate",
+  schema: z.object({
+    skill: z.literal("sfx.generate"),
+    text: z.string(),
+    prompt: z.string().optional(),
+    durationSeconds: z.number().optional(),
+    durationMs: z.number().optional(),
+    loop: z.boolean().optional(),
+    promptInfluence: z.number().optional(),
+    startMs: z.number().optional(),
+    trackId: z.string().optional(),
+  }),
+  constraints: [
+    "Describe the sound in natural language (action, setting, atmosphere).",
+    "Optional durationSeconds 0.5–30; omit to let the model choose length.",
+    "Does not use Voice ID — only the ElevenLabs API key.",
+  ],
+  examples: [
+    {
+      skill: "sfx.generate",
+      text: "Soft rain against a window in a quiet apartment",
+      durationSeconds: 4,
+    },
+  ],
+});

@@ -23,14 +23,20 @@ describe("capability catalog", () => {
     assert.ok(ids.has("timeline.move"));
     assert.ok(ids.has("clip.audio"));
     assert.ok(ids.has("skill.image.generate"));
+    assert.ok(ids.has("skill.sfx.generate"));
     assert.ok(ids.has("captions.auto"));
   });
 
   it("omits gated skills when keys missing", () => {
     const bare = buildCapabilityIndex({});
     assert.ok(!bare.some((r) => r.skill === "image.generate"));
-    const gated = buildCapabilityIndex({ imageGemini: true });
+    assert.ok(!bare.some((r) => r.skill === "sfx.generate"));
+    const gated = buildCapabilityIndex({
+      imageGemini: true,
+      sfxElevenlabs: true,
+    });
     assert.ok(gated.some((r) => r.skill === "image.generate"));
+    assert.ok(gated.some((r) => r.skill === "sfx.generate"));
   });
 
   it("describes a capability with JSON schema", async () => {

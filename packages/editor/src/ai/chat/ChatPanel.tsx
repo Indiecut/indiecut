@@ -13,6 +13,7 @@ import { MAX_USER_REFERENCE_IMAGES } from "../context/downscaleUserImage";
 import {
   getClaudeModelId,
   hasAnthropicKey,
+  hasElevenLabsSfx,
   hasElevenLabsVoice,
   hasGeminiKey,
   subscribeAiSecrets,
@@ -81,6 +82,7 @@ export function ChatPanel() {
   const [keyReady, setKeyReady] = useState(() => hasAnthropicKey());
   const [imageSkill, setImageSkill] = useState(() => hasGeminiKey());
   const [voiceSkill, setVoiceSkill] = useState(() => hasElevenLabsVoice());
+  const [sfxSkill, setSfxSkill] = useState(() => hasElevenLabsSfx());
   const [copyMenu, setCopyMenu] = useState<ChatCopyMenuState | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -92,11 +94,13 @@ export function ChatPanel() {
     setKeyReady(hasAnthropicKey());
     setImageSkill(hasGeminiKey());
     setVoiceSkill(hasElevenLabsVoice());
+    setSfxSkill(hasElevenLabsSfx());
     setModelId(getClaudeModelId());
     return subscribeAiSecrets(() => {
       setKeyReady(hasAnthropicKey());
       setImageSkill(hasGeminiKey());
       setVoiceSkill(hasElevenLabsVoice());
+      setSfxSkill(hasElevenLabsSfx());
       setModelId(getClaudeModelId());
     });
   }, [setModelId]);
@@ -185,6 +189,20 @@ export function ChatPanel() {
               }
             >
               Voice
+            </span>
+            <span
+              className={
+                sfxSkill
+                  ? "chat-panel__skill"
+                  : "chat-panel__skill chat-panel__skill--disabled"
+              }
+              title={
+                sfxSkill
+                  ? "ElevenLabs sound effects available"
+                  : "Add ElevenLabs API key and pass Test (SFX) in Settings → AI"
+              }
+            >
+              SFX
             </span>
           </div>
         </div>

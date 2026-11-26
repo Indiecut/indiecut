@@ -92,6 +92,11 @@ export type AiSecretsV1 = {
   geminiKey?: string;
   elevenLabsKey?: string;
   elevenLabsVoiceId?: string;
+  /**
+   * Last ElevenLabs sound-generation probe result.
+   * `false` disables the SFX skill even if an API key is present.
+   */
+  elevenLabsSfxOk?: boolean;
   claudeModelId?: ClaudeModelId;
 };
 
@@ -160,6 +165,10 @@ export interface IndieCutAiBridge {
     }>;
   }) => Promise<void>;
   abortAnthropic: (streamId: string) => Promise<void>;
+  /** Lightweight API-key check (desktop; avoids CORS). */
+  probeAnthropic?: (opts: {
+    apiKey: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   onAnthropicEvent: (
     listener: (event: {
       streamId: string;

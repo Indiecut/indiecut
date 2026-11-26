@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld("indiecut", {
     streamAnthropic: (opts) => ipcRenderer.invoke("ai:anthropicStream", opts),
     abortAnthropic: (streamId) =>
       ipcRenderer.invoke("ai:anthropicAbort", streamId),
+    probeAnthropic: (opts) => ipcRenderer.invoke("ai:anthropicProbe", opts),
     onAnthropicEvent: (listener) => {
       const handler = (_event, payload) => listener(payload);
       ipcRenderer.on("ai:anthropic-event", handler);

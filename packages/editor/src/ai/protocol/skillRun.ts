@@ -1,10 +1,15 @@
 import { runAutoCaptionJob } from "../captions/runAutoCaptionJob";
 import type { SpeechLanguage } from "../captions/types";
-import { hasElevenLabsVoice, hasGeminiKey } from "../secrets/aiSecrets";
+import {
+  hasElevenLabsSfx,
+  hasElevenLabsVoice,
+  hasGeminiKey,
+} from "../secrets/aiSecrets";
 import {
   executeImageEditFrame,
   executeImageGenerate,
 } from "../tools/imageTools";
+import { executeSfxGenerate } from "../tools/sfxTools";
 import { executeVoiceGenerate } from "../tools/voiceTools";
 import type { MutationBatch } from "../tools/mutationBatch";
 import type { ToolResult } from "../tools/types";
@@ -71,14 +76,40 @@ export async function executeSkillRun(
     return result;
   }
 
+  if (skill === "sfx.generate") {
+    if (!hasElevenLabsSfx()) {
+      return {
+        ok: false,
+        summary:
+          "Sound effects unavailable — add an ElevenLabs API key and pass Test (SFX) in Settings → AI",
+        data: { error: "elevenlabs_sfx_unavailable" },
+      };
+    }
+    const result = await executeSfxGenerate(skillInput, batch, signal);
+    if (result.ok && result.data && typeof result.data === "object") {
+      const mediaId = (result.data as { mediaId?: string }).mediaId;
+      if (mediaId) batch.importedMediaIds.push(mediaId);
+    }
+    return result;
+  }
+
   if (skill === "captions.auto") {
     try {
       const language =
         typeof skillInput.language === "string"
           ? (skillInput.language as SpeechLanguage)
           : "auto";
+      const providerRaw =
+        typeof skillInput.provider === "string"
+          ? skillInput.provider.trim()
+          : "";
+      const provider =
+        providerRaw === "elevenlabs" || providerRaw === "whisper"
+          ? providerRaw
+          : undefined;
       const result = await runAutoCaptionJob({
         language,
+        provider,
         signal,
       });
       // Captions job commits itself — refresh batch tracks from store.

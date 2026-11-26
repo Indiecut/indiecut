@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../persistence/chatTranscript";
 import type { AiChatTurnSummary } from "./types";
 
-export const CHAT_TAIL_TURNS = 6;
+export const CHAT_TAIL_TURNS = 3;
 
 /** Build a short rolling history for the model (no image bytes / raw tool JSON). */
 export function buildChatTail(

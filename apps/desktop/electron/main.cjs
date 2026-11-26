@@ -776,6 +776,44 @@ handle("ai:anthropicAbort", async (_event, streamId) => {
   }
 });
 
+/** Lightweight key check for AI settings Test button. */
+handle("ai:anthropicProbe", async (_event, opts) => {
+  const apiKey = assertString(opts?.apiKey, "api key");
+  try {
+    const response = await net.fetch(
+      "https://api.anthropic.com/v1/models?limit=1",
+      {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+      },
+    );
+    if (response.ok) return { ok: true };
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 240);
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: "Invalid API key" };
+    }
+    return {
+      ok: false,
+      error: detail
+        ? `Anthropic HTTP ${response.status}: ${detail}`
+        : `Anthropic HTTP ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
 app.whenReady().then(() => {
   installContentSecurityPolicy();
   if (process.platform === "darwin" && app.dock && fssync.existsSync(APP_ICON)) {
