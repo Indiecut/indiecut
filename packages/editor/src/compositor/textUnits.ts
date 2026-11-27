@@ -31,11 +31,12 @@ import {
   paintRetro3D,
   paintTextLine,
   paintUnderline,
+  readGlyphVertMetrics,
   resolveText,
   textFontCss,
 } from "./rasterizeText";
 
-const PAD = 4;
+const PAD = 6;
 
 export type LaidOutTextUnit = {
   index: number;
@@ -203,17 +204,14 @@ export function layoutTextUnits(
   if (!ctx) return null;
 
   ctx.font = textFontCss(t);
+  ctx.textBaseline = "top";
   const lines = t.content.split("\n");
   let ascent = t.fontSize * 0.8;
-  let descent = t.fontSize * 0.25;
+  let descent = t.fontSize * 0.3;
   for (const line of lines) {
-    const metrics0 = ctx.measureText(line || "M");
-    if (metrics0.actualBoundingBoxAscent > 0) {
-      ascent = Math.max(ascent, metrics0.actualBoundingBoxAscent);
-    }
-    if (metrics0.actualBoundingBoxDescent > 0) {
-      descent = Math.max(descent, metrics0.actualBoundingBoxDescent);
-    }
+    const metrics = readGlyphVertMetrics(ctx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
   }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
   const strokePad = t.strokeWidth * 2;
@@ -406,16 +404,13 @@ export function rasterizeTextUnit(
     | null;
   if (!pctx) return null;
   pctx.font = textFontCss(t);
+  pctx.textBaseline = "top";
   const mW = measureLineWidth(pctx, unitProps.content, t.letterSpacing);
-  const m = pctx.measureText(unitProps.content);
-  const ascent =
-    m.actualBoundingBoxAscent > 0
-      ? m.actualBoundingBoxAscent
-      : fontSize * 0.8;
-  const descent =
-    m.actualBoundingBoxDescent > 0
-      ? m.actualBoundingBoxDescent
-      : fontSize * 0.25;
+  const { ascent, descent } = readGlyphVertMetrics(
+    pctx,
+    unitProps.content,
+    fontSize,
+  );
   const strokePad = strokeWidth * 2;
   const logicalWidth = Math.max(
     2,
@@ -620,15 +615,14 @@ export function compositeAnimatedText(args: {
       for (const line of lines) {
         maxW = Math.max(maxW, measureLineWidth(pctx, line, paint.letterSpacing));
       }
-      const metrics0 = pctx.measureText(lines[0] || "M");
-      const ascent =
-        metrics0.actualBoundingBoxAscent > 0
-          ? metrics0.actualBoundingBoxAscent
-          : paint.fontSize * 0.8;
-      const descent =
-        metrics0.actualBoundingBoxDescent > 0
-          ? metrics0.actualBoundingBoxDescent
-          : paint.fontSize * 0.25;
+      pctx.textBaseline = "top";
+      let ascent = paint.fontSize * 0.8;
+      let descent = paint.fontSize * 0.3;
+      for (const line of lines) {
+        const metrics = readGlyphVertMetrics(pctx, line, paint.fontSize);
+        ascent = Math.max(ascent, metrics.ascent);
+        descent = Math.max(descent, metrics.descent);
+      }
       const lineHeight = lineAdvanceHeight(paint, ascent, descent);
       const textH = lines.length * lineHeight;
       const fullW = layout.blockWidth * pr;

@@ -22,7 +22,7 @@ import {
   expandRunChars,
   mapRunStyles,
   normalizeTextProps,
-  replaceContentKeepingBaseStyle,
+  syncRunsToContent,
   resolvedRuns,
 } from "../text/runs";
 import {
@@ -350,7 +350,8 @@ export function TextBasicPanel({ clip, track }: Props) {
   ): TextProps => {
     const withRecipe = recipePartial(partial);
     if ("content" in withRecipe && typeof withRecipe.content === "string") {
-      return replaceContentKeepingBaseStyle(
+      // Preserve mixed run styles across typing / delete / paste.
+      return syncRunsToContent(
         { ...text, ...withRecipe },
         withRecipe.content,
       );

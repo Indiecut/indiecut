@@ -5,20 +5,15 @@ import {
   getActiveProvider,
   getCapability,
   isCapabilityReady,
-  resolveChatProviderId,
   resolveClaudeModelId,
-  resolveOpenAiModelId,
   type AiCapabilityId,
-  type AiProviderId,
 } from "../ai/providers/registry";
 import {
   getAiSecretsCached,
   loadAiSecrets,
   saveAiSecretsAndNotify,
   type AiSecretsV1,
-  type ChatProviderId,
   type ClaudeModelId,
-  type OpenAiModelId,
 } from "../ai/secrets/aiSecrets";
 import {
   testElevenLabsConnection,
@@ -30,14 +25,11 @@ import "./AiSettingsPanel.css";
 
 type DraftSecrets = {
   anthropicKey: string;
-  openaiKey: string;
   geminiKey: string;
   elevenLabsKey: string;
   elevenLabsVoiceId: string;
   elevenLabsSfxOk?: boolean;
-  chatProviderId: ChatProviderId;
   claudeModelId: ClaudeModelId;
-  openaiModelId: OpenAiModelId;
 };
 
 type TestState =
@@ -57,14 +49,11 @@ const NAV_ICONS: Record<AiCapabilityId, NavIcon> = {
 function secretsToDraft(s: AiSecretsV1): DraftSecrets {
   return {
     anthropicKey: s.anthropicKey ?? "",
-    openaiKey: s.openaiKey ?? "",
     geminiKey: s.geminiKey ?? "",
     elevenLabsKey: s.elevenLabsKey ?? "",
     elevenLabsVoiceId: s.elevenLabsVoiceId ?? "",
     elevenLabsSfxOk: s.elevenLabsSfxOk,
-    chatProviderId: resolveChatProviderId(s.chatProviderId),
     claudeModelId: resolveClaudeModelId(s.claudeModelId),
-    openaiModelId: resolveOpenAiModelId(s.openaiModelId),
   };
 }
 
@@ -72,14 +61,11 @@ function draftAsSecrets(d: DraftSecrets): AiSecretsV1 {
   return {
     version: 1,
     anthropicKey: d.anthropicKey,
-    openaiKey: d.openaiKey,
     geminiKey: d.geminiKey,
     elevenLabsKey: d.elevenLabsKey,
     elevenLabsVoiceId: d.elevenLabsVoiceId,
     elevenLabsSfxOk: d.elevenLabsSfxOk,
-    chatProviderId: d.chatProviderId,
     claudeModelId: d.claudeModelId,
-    openaiModelId: d.openaiModelId,
   };
 }
 
@@ -169,10 +155,9 @@ export function AiSettingsPanel() {
     () => getCapability(capabilityId),
     [capabilityId],
   );
-  const draftSecrets = useMemo(() => draftAsSecrets(draft), [draft]);
   const provider = useMemo(
-    () => getActiveProvider(capability, draftSecrets),
-    [capability, draftSecrets],
+    () => getActiveProvider(capability),
+    [capability],
   );
 
   const readyByCap = useMemo(() => {
@@ -374,21 +359,9 @@ export function AiSettingsPanel() {
               <select
                 className="ai-settings-panel__input"
                 value={provider.id}
-                onChange={(e) => {
-                  const nextId = e.target.value as AiProviderId;
-                  const next = capability.providers.find((p) => p.id === nextId);
-                  if (!next?.available) return;
-                  if (capability.id === "chat" && next.chatProviderId) {
-                    setDraft((d) => ({
-                      ...d,
-                      chatProviderId: next.chatProviderId!,
-                    }));
-                    setTests((t) => ({
-                      ...t,
-                      chat: { status: "idle" },
-                    }));
-                    markDirty();
-                  }
+                disabled={capability.providers.length <= 1}
+                onChange={() => {
+                  /* Single live provider per capability today. */
                 }}
               >
                 {capability.providers.map((p) => (
@@ -418,9 +391,7 @@ export function AiSettingsPanel() {
                         ? "AIza…"
                         : provider.id === "anthropic"
                           ? "sk-ant-…"
-                          : provider.id === "openai-chat"
-                            ? "sk-…"
-                            : undefined
+                          : undefined
                     }
                     onChange={(e) => {
                       const field = provider.apiKeyField!;
@@ -489,34 +460,6 @@ export function AiSettingsPanel() {
                     setDraft((d) => ({
                       ...d,
                       claudeModelId: resolveClaudeModelId(e.target.value),
-                    }));
-                    markDirty();
-                  }}
-                >
-                  {provider.models.map((m) => (
-                    <option
-                      key={m.id}
-                      value={m.id}
-                      disabled={m.available === false}
-                    >
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            {provider.defaultModelField === "openaiModelId" &&
-            provider.models.length > 0 ? (
-              <label className="ai-settings-panel__field">
-                <span className="ai-settings-panel__label">Default model</span>
-                <select
-                  className="ai-settings-panel__input"
-                  value={draft.openaiModelId}
-                  onChange={(e) => {
-                    setDraft((d) => ({
-                      ...d,
-                      openaiModelId: resolveOpenAiModelId(e.target.value),
                     }));
                     markDirty();
                   }}

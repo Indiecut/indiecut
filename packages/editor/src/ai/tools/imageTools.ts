@@ -1,4 +1,5 @@
 import { getEditorStore } from "../../store/editorStore";
+import { createDefaultRemoveBg } from "../../project/removeBgDefaults";
 import {
   editImage,
   geminiAspectFromProject,
@@ -9,6 +10,10 @@ import { getAiSecretsCached } from "../secrets/aiSecrets";
 import { capturePreviewComposite } from "../../preview/previewWorkerClient";
 import { captureSourceFrameBytes } from "./captureTools";
 import { importGeneratedImageOntoTracks } from "./importGeneratedImage";
+import {
+  promptImpliesStickerCutout,
+  withStickerGreenScreen,
+} from "./stickerGreenScreen";
 import type { MutationBatch } from "./mutationBatch";
 import type { ToolResult } from "./types";
 
@@ -97,13 +102,16 @@ export async function executeImageGenerate(
     };
   }
 
+  const asSticker =
+    input.asSticker === true || promptImpliesStickerCutout(prompt);
+  const generatePrompt = asSticker ? withStickerGreenScreen(prompt) : prompt;
   const timing = parseTiming(input);
   const aspectRatio = projectAspectHint(input.aspectHint);
 
   try {
     const generated = await generateImage({
       apiKey,
-      prompt,
+      prompt: generatePrompt,
       aspectRatio,
       signal,
     });
@@ -112,20 +120,25 @@ export async function executeImageGenerate(
     const imported = await importGeneratedImageOntoTracks({
       bytes: generated.bytes,
       mimeType: generated.mimeType,
-      name: `AI: ${short}`,
+      name: asSticker ? `AI sticker: ${short}` : `AI: ${short}`,
       tracks: batch.tracks,
       startMs: timing.startMs,
       durationMs: timing.durationMs,
       exactStart: timing.exactStart,
-      preferOverlay: false,
+      preferOverlay: asSticker,
       targetTrackId:
         typeof input.trackId === "string" ? input.trackId : undefined,
+      removeBg: asSticker ? createDefaultRemoveBg() : undefined,
     });
-    const detail = `Generated “${short}” → ${imported.placed.clip.id} @ ${Math.round(imported.placed.clip.startMs)}ms`;
+    const detail = asSticker
+      ? `Sticker “${short}” → ${imported.placed.clip.id} @ ${Math.round(imported.placed.clip.startMs)}ms (remove-bg on)`
+      : `Generated “${short}” → ${imported.placed.clip.id} @ ${Math.round(imported.placed.clip.startMs)}ms`;
     return applyImagePlacement(
       batch,
       imported,
-      `Generated image at playhead`,
+      asSticker
+        ? `Generated sticker at playhead (remove-bg on)`
+        : `Generated image at playhead`,
       detail,
     );
   } catch (err) {

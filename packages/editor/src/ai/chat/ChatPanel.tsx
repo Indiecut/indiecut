@@ -12,7 +12,7 @@ import { IconImage, IconSend, IconStop } from "../../icons/Icons";
 import { MAX_USER_REFERENCE_IMAGES } from "../context/downscaleUserImage";
 import {
   getChatModelId,
-  hasAnyChatKey,
+  hasAnthropicKey,
   hasElevenLabsSfx,
   hasElevenLabsVoice,
   hasGeminiKey,
@@ -80,7 +80,7 @@ export function ChatPanel() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
 
-  const [keyReady, setKeyReady] = useState(() => hasAnyChatKey());
+  const [keyReady, setKeyReady] = useState(() => hasAnthropicKey());
   const [imageSkill, setImageSkill] = useState(() => hasGeminiKey());
   const [voiceSkill, setVoiceSkill] = useState(() => hasElevenLabsVoice());
   const [sfxSkill, setSfxSkill] = useState(() => hasElevenLabsSfx());
@@ -92,13 +92,13 @@ export function ChatPanel() {
   const canSend = Boolean(draft.trim() || draftImages.length > 0);
 
   useEffect(() => {
-    setKeyReady(hasAnyChatKey());
+    setKeyReady(hasAnthropicKey());
     setImageSkill(hasGeminiKey());
     setVoiceSkill(hasElevenLabsVoice());
     setSfxSkill(hasElevenLabsSfx());
     setModelId(getChatModelId());
     return subscribeAiSecrets(() => {
-      setKeyReady(hasAnyChatKey());
+      setKeyReady(hasAnthropicKey());
       setImageSkill(hasGeminiKey());
       setVoiceSkill(hasElevenLabsVoice());
       setSfxSkill(hasElevenLabsSfx());
@@ -325,7 +325,7 @@ export function ChatPanel() {
         {blocked ? (
           <div className="chat-panel__blocked">
             <p className="chat-panel__blocked-text">
-              Add an Anthropic or OpenAI API key to use Chat.
+              Add an Anthropic API key to use Chat.
             </p>
             <button
               type="button"

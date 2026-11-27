@@ -67,14 +67,6 @@ contextBridge.exposeInMainWorld("indiecut", {
       ipcRenderer.on("ai:anthropic-event", handler);
       return () => ipcRenderer.removeListener("ai:anthropic-event", handler);
     },
-    streamOpenAI: (opts) => ipcRenderer.invoke("ai:openaiStream", opts),
-    abortOpenAI: (streamId) => ipcRenderer.invoke("ai:openaiAbort", streamId),
-    probeOpenAI: (opts) => ipcRenderer.invoke("ai:openaiProbe", opts),
-    onOpenAIEvent: (listener) => {
-      const handler = (_event, payload) => listener(payload);
-      ipcRenderer.on("ai:openai-event", handler);
-      return () => ipcRenderer.removeListener("ai:openai-event", handler);
-    },
   },
   window: {
     isFullScreen: () => ipcRenderer.invoke("window:isFullScreen"),

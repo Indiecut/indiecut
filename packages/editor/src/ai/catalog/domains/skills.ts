@@ -5,7 +5,8 @@ registerCapability({
   id: "skill.image.generate",
   domain: "skill.image",
   title: "Generate image",
-  summary: "Gemini image generation → import + place on timeline",
+  summary:
+    "Gemini image generation → import + place on timeline. Set asSticker for cutout stickers (green-screen + remove-bg).",
   verbs: ["skill"],
   targets: ["media", "timeline"],
   risk: "skill",
@@ -16,7 +17,38 @@ registerCapability({
     startMs: z.number().optional(),
     durationMs: z.number().optional(),
     aspectHint: z.string().optional(),
+    /** Cutout sticker: solid chroma-green plate + removeBg on + overlay lane. */
+    asSticker: z.boolean().optional(),
   }),
+  constraints: [
+    "Use asSticker:true when the user wants a sticker, cutout, die-cut, transparent background, no-background graphic, OR a complex overlay infographic (calendar, pie/bar/line chart, diagram, flowchart, roadmap, stats card) — not a full scene still.",
+    "Do NOT invent HTML/SVG/widget calendars or charts — generate them as asSticker images.",
+    "Transparent / alpha PNG requests are cutouts: set asSticker:true (host uses green-screen + chroma remove-bg; do not ask Gemini for real transparency).",
+    "asSticker appends a fixed green-screen instruction and enables chroma remove-bg — do not also patch removeBg separately.",
+    "Bundled kinetic/shape stickers stay timeline.insertSticker; AI-drawn stickers and infographics use this skill with asSticker.",
+  ],
+  examples: [
+    {
+      skill: "image.generate",
+      prompt: "A cheerful cartoon taco wearing sunglasses",
+      asSticker: true,
+    },
+    {
+      skill: "image.generate",
+      prompt: "A red rocket icon with transparent background",
+      asSticker: true,
+    },
+    {
+      skill: "image.generate",
+      prompt: "A clean March 2026 calendar grid with labeled days",
+      asSticker: true,
+    },
+    {
+      skill: "image.generate",
+      prompt: "A colorful pie chart showing market share segments with labels",
+      asSticker: true,
+    },
+  ],
 });
 
 registerCapability({

@@ -5,7 +5,7 @@ import {
   ensureVisualAvTrackForRange,
   isVisualAvTrack,
 } from "../engine/timelineOps";
-import type { Clip, Track } from "../project/types";
+import type { Clip, RemoveBgParams, Track } from "../project/types";
 
 /** Default still duration for AI-generated / edited images. */
 export const AI_IMAGE_DURATION_MS = 3000;
@@ -27,6 +27,8 @@ export type PlaceImageOnTracksOpts = {
   magnetEnabled: boolean;
   pxPerSec: number;
   transform?: Clip["transform"];
+  /** Optional chroma remove-bg (e.g. AI sticker cutouts). */
+  removeBg?: RemoveBgParams;
 };
 
 export type PlaceImageOnTracksResult = {
@@ -90,6 +92,7 @@ export function placeImageOnTracks(
     outMs: durationMs,
     transform: opts.transform ?? defaultAnimatableTransform(),
     blendMode: "normal",
+    ...(opts.removeBg ? { removeBg: opts.removeBg } : {}),
   };
 
   const next = addClipToTrack(tracks, track.id, clip);

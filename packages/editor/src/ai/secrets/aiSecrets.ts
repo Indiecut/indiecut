@@ -1,12 +1,10 @@
 import {
   getPlatform,
   type AiSecretsV1,
-  type ChatProviderId,
   type ClaudeModelId,
-  type OpenAiModelId,
 } from "@indiecut/platform";
 
-export type { AiSecretsV1, ChatProviderId, ClaudeModelId, OpenAiModelId };
+export type { AiSecretsV1, ClaudeModelId };
 
 export const CLAUDE_MODELS: ReadonlyArray<{
   id: ClaudeModelId;
@@ -30,41 +28,11 @@ export const CLAUDE_MODELS: ReadonlyArray<{
   },
 ];
 
-export const OPENAI_MODELS: ReadonlyArray<{
-  id: OpenAiModelId;
-  shortLabel: string;
-  label: string;
-  hint: string;
-}> = [
-  {
-    id: "gpt-4o",
-    shortLabel: "GPT-4o",
-    label: "GPT-4o (recommended)",
-    hint: "Strong quality",
-  },
-  {
-    id: "gpt-4o-mini",
-    shortLabel: "4o mini",
-    label: "GPT-4o mini (faster)",
-    hint: "Faster / cheaper",
-  },
-  {
-    id: "gpt-6-luna-max",
-    shortLabel: "Luna Max",
-    label: "Luna Max (reasoning)",
-    hint: "Highest reasoning (xhigh)",
-  },
-];
-
 export const DEFAULT_CLAUDE_MODEL: ClaudeModelId = "claude-sonnet-5-5";
-export const DEFAULT_OPENAI_MODEL: OpenAiModelId = "gpt-4o";
-export const DEFAULT_CHAT_PROVIDER: ChatProviderId = "anthropic";
 
 const EMPTY: AiSecretsV1 = {
   version: 1,
-  chatProviderId: DEFAULT_CHAT_PROVIDER,
   claudeModelId: DEFAULT_CLAUDE_MODEL,
-  openaiModelId: DEFAULT_OPENAI_MODEL,
 };
 
 /** In-memory cache — never log key values. */
@@ -75,30 +43,8 @@ export function isClaudeModelId(id: string): id is ClaudeModelId {
   return id === "claude-sonnet-5-5" || id === "claude-haiku-5-5";
 }
 
-export function isOpenAiModelId(id: string): id is OpenAiModelId {
-  return (
-    id === "gpt-4o" || id === "gpt-4o-mini" || id === "gpt-6-luna-max"
-  );
-}
-
-export function isChatProviderId(id: string): id is ChatProviderId {
-  return id === "anthropic" || id === "openai";
-}
-
 export function resolveClaudeModelId(raw: string | undefined): ClaudeModelId {
   return isClaudeModelId(raw ?? "") ? (raw as ClaudeModelId) : DEFAULT_CLAUDE_MODEL;
-}
-
-export function resolveOpenAiModelId(raw: string | undefined): OpenAiModelId {
-  return isOpenAiModelId(raw ?? "") ? (raw as OpenAiModelId) : DEFAULT_OPENAI_MODEL;
-}
-
-export function resolveChatProviderId(
-  raw: string | undefined,
-): ChatProviderId {
-  return isChatProviderId(raw ?? "")
-    ? (raw as ChatProviderId)
-    : DEFAULT_CHAT_PROVIDER;
 }
 
 function normalize(raw: AiSecretsV1 | null | undefined): AiSecretsV1 {
@@ -114,14 +60,11 @@ function normalize(raw: AiSecretsV1 | null | undefined): AiSecretsV1 {
   return {
     version: 1,
     anthropicKey: trimOrUndef(raw.anthropicKey),
-    openaiKey: trimOrUndef(raw.openaiKey),
     geminiKey: trimOrUndef(raw.geminiKey),
     elevenLabsKey: trimOrUndef(raw.elevenLabsKey),
     elevenLabsVoiceId: trimOrUndef(raw.elevenLabsVoiceId),
     elevenLabsSfxOk,
-    chatProviderId: resolveChatProviderId(raw.chatProviderId),
     claudeModelId: resolveClaudeModelId(raw.claudeModelId),
-    openaiModelId: resolveOpenAiModelId(raw.openaiModelId),
   };
 }
 
@@ -137,16 +80,6 @@ export function getAiSecretsCached(): AiSecretsV1 {
 
 export function hasAnthropicKey(): boolean {
   return Boolean(cache.anthropicKey);
-}
-
-export function hasOpenAiKey(): boolean {
-  return Boolean(cache.openaiKey);
-}
-
-/** True when the active chat provider has an API key. */
-export function hasChatKey(): boolean {
-  const provider = getChatProviderId();
-  return provider === "openai" ? hasOpenAiKey() : hasAnthropicKey();
 }
 
 export function hasGeminiKey(): boolean {
@@ -171,56 +104,26 @@ export function hasElevenLabsSfx(): boolean {
   return Boolean(cache.elevenLabsKey) && cache.elevenLabsSfxOk !== false;
 }
 
-export function getChatProviderId(): ChatProviderId {
-  return resolveChatProviderId(cache.chatProviderId);
-}
-
 export function getClaudeModelId(): ClaudeModelId {
   return cache.claudeModelId ?? DEFAULT_CLAUDE_MODEL;
 }
 
-export function getOpenAiModelId(): OpenAiModelId {
-  return cache.openaiModelId ?? DEFAULT_OPENAI_MODEL;
-}
-
-/** Active chat model id for the selected provider. */
+/** Active chat model id (Claude). */
 export function getChatModelId(): string {
-  return getChatProviderId() === "openai"
-    ? getOpenAiModelId()
-    : getClaudeModelId();
+  return getClaudeModelId();
 }
 
-/** Which chat provider a model allowlist id belongs to. */
-export function chatProviderForModelId(modelId: string): ChatProviderId {
-  return isOpenAiModelId(modelId) ? "openai" : "anthropic";
-}
-
-/** True when any chat provider has an API key. */
-export function hasAnyChatKey(): boolean {
-  return hasAnthropicKey() || hasOpenAiKey();
-}
-
-/** True when the API key for this model’s provider is present. */
+/** True when the Anthropic API key is present (Claude models). */
 export function hasKeyForChatModel(modelId: string): boolean {
-  return chatProviderForModelId(modelId) === "openai"
-    ? hasOpenAiKey()
-    : hasAnthropicKey();
+  return isClaudeModelId(modelId) && hasAnthropicKey();
 }
 
-/** Persist active chat provider + model from a picker selection. */
+/** Persist Claude model from a picker selection. */
 export async function selectChatModel(modelId: string): Promise<AiSecretsV1> {
   const current = getAiSecretsCached();
-  if (isOpenAiModelId(modelId)) {
-    return saveAiSecretsAndNotify({
-      ...current,
-      chatProviderId: "openai",
-      openaiModelId: modelId,
-    });
-  }
   if (isClaudeModelId(modelId)) {
     return saveAiSecretsAndNotify({
       ...current,
-      chatProviderId: "anthropic",
       claudeModelId: modelId,
     });
   }

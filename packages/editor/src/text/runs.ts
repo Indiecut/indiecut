@@ -166,6 +166,63 @@ export function replaceContentKeepingBaseStyle(
   return normalizeTextProps({ ...props, content, runs });
 }
 
+function codePoints(s: string): string[] {
+  return [...s];
+}
+
+function commonPrefixLen(a: string[], b: string[]): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i += 1;
+  return i;
+}
+
+function commonSuffixLen(a: string[], b: string[], prefixLen: number): number {
+  const max = Math.min(a.length - prefixLen, b.length - prefixLen);
+  let i = 0;
+  while (
+    i < max &&
+    a[a.length - 1 - i] === b[b.length - 1 - i]
+  ) {
+    i += 1;
+  }
+  return i;
+}
+
+/**
+ * Update plain content while preserving per-character run styles.
+ * Diffs old vs new by shared prefix/suffix (handles typing, delete, paste).
+ * Prefer this over replaceContentKeepingBaseStyle for inspector edits.
+ */
+export function syncRunsToContent(
+  props: TextProps,
+  nextContent: string,
+): TextProps {
+  const prevRuns = resolvedRuns(props);
+  const prevPlain = plainContent(prevRuns);
+  if (prevPlain === nextContent) {
+    return normalizeTextProps({ ...props, content: nextContent, runs: prevRuns });
+  }
+
+  const prevChars = codePoints(prevPlain);
+  const nextChars = codePoints(nextContent);
+  const prefix = commonPrefixLen(prevChars, nextChars);
+  const suffix = commonSuffixLen(prevChars, nextChars, prefix);
+
+  const deleteFrom = prefix;
+  const deleteTo = prevChars.length - suffix;
+  const inserted = nextChars.slice(prefix, nextChars.length - suffix).join("");
+
+  let runs = prevRuns;
+  if (deleteTo > deleteFrom) {
+    runs = deleteRange(runs, deleteFrom, deleteTo);
+  }
+  if (inserted) {
+    runs = insertTextAt(runs, deleteFrom, inserted);
+  }
+  return normalizeTextProps({ ...props, runs });
+}
+
 /** Patch every run's style (e.g. Aa / effect preset applied to whole clip). */
 export function mapRunStyles(
   props: TextProps,

@@ -28,7 +28,6 @@ import {
   type ChatUserImage,
 } from "../persistence/chatTranscript";
 import {
-  chatProviderForModelId,
   getAiSecretsCached,
   getChatModelId,
   hasKeyForChatModel,
@@ -45,7 +44,7 @@ type ChatStoreState = {
   draft: string;
   /** Pending downscaled reference images for the next send. */
   draftImages: UserReferenceAttachment[];
-  /** Active chat model id (Claude or OpenAI depending on provider). */
+  /** Active Claude chat model id. */
   modelId: string;
   visionMode: VisionMode;
   /** Agent (default) can edit; Ask is suggestions only. */
@@ -311,20 +310,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const plan = msg?.pendingPlan;
     if (!plan || plan.cancelledAt) return;
     if (!hasKeyForChatModel(state.modelId)) {
-      const provider = chatProviderForModelId(state.modelId);
       set({
-        error:
-          provider === "openai"
-            ? "Add an OpenAI API key in AI settings to continue."
-            : "Add an Anthropic API key in AI settings to continue.",
+        error: "Add an Anthropic API key in AI settings to continue.",
       });
       return;
     }
     const secrets = getAiSecretsCached();
-    const apiKey =
-      chatProviderForModelId(state.modelId) === "openai"
-        ? secrets.openaiKey
-        : secrets.anthropicKey;
+    const apiKey = secrets.anthropicKey;
     if (!apiKey) return;
 
     const controller = new AbortController();
@@ -416,20 +408,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const draftImages = state.draftImages.slice(0, MAX_USER_REFERENCE_IMAGES);
     if ((!text && draftImages.length === 0) || state.streaming) return;
     if (!hasKeyForChatModel(state.modelId)) {
-      const provider = chatProviderForModelId(state.modelId);
       set({
-        error:
-          provider === "openai"
-            ? "Add an OpenAI API key in AI settings to continue."
-            : "Add an Anthropic API key in AI settings to continue.",
+        error: "Add an Anthropic API key in AI settings to continue.",
       });
       return;
     }
     const secrets = getAiSecretsCached();
-    const apiKey =
-      chatProviderForModelId(state.modelId) === "openai"
-        ? secrets.openaiKey
-        : secrets.anthropicKey;
+    const apiKey = secrets.anthropicKey;
     if (!apiKey) return;
 
     // Drop greyed-out post-restore turns — they can't stay in history.

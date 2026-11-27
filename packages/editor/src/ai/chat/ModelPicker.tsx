@@ -4,8 +4,6 @@ import {
   CLAUDE_MODELS,
   hasAnthropicKey,
   hasKeyForChatModel,
-  hasOpenAiKey,
-  OPENAI_MODELS,
   subscribeAiSecrets,
 } from "../secrets/aiSecrets";
 
@@ -13,20 +11,6 @@ type ModelPickerProps = {
   value: string;
   disabled?: boolean;
   onChange: (id: string) => void;
-};
-
-type ChatModelOption = {
-  id: string;
-  shortLabel: string;
-  label: string;
-  hint: string;
-};
-
-type ModelGroup = {
-  id: "anthropic" | "openai";
-  label: string;
-  models: readonly ChatModelOption[];
-  keyReady: boolean;
 };
 
 export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
@@ -39,33 +23,15 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
     return subscribeAiSecrets(() => setKeysVersion((v) => v + 1));
   }, []);
 
-  const groups = useMemo<ModelGroup[]>(() => {
+  const keyReady = useMemo(() => {
     void keysVersion;
-    return [
-      {
-        id: "anthropic",
-        label: "Claude",
-        models: CLAUDE_MODELS,
-        keyReady: hasAnthropicKey(),
-      },
-      {
-        id: "openai",
-        label: "OpenAI",
-        models: OPENAI_MODELS,
-        keyReady: hasOpenAiKey(),
-      },
-    ];
+    return hasAnthropicKey();
   }, [keysVersion]);
 
-  const allModels = useMemo(
-    () => groups.flatMap((g) => g.models),
-    [groups],
-  );
-
   const selected =
-    allModels.find((m) => m.id === value) ??
-    allModels.find((m) => hasKeyForChatModel(m.id)) ??
-    allModels[0]!;
+    CLAUDE_MODELS.find((m) => m.id === value) ??
+    CLAUDE_MODELS.find((m) => hasKeyForChatModel(m.id)) ??
+    CLAUDE_MODELS[0]!;
 
   useEffect(() => {
     if (!open) return;
@@ -108,64 +74,57 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
       {open ? (
         <ul
           id={listId}
-          className="chat-model-picker__menu chat-model-picker__menu--grouped"
+          className="chat-model-picker__menu"
           role="listbox"
           aria-label="Chat model"
         >
-          {groups.map((group) => (
-            <li key={group.id} role="presentation" className="chat-model-picker__group">
-              <div className="chat-model-picker__group-label" aria-hidden="true">
-                {group.label}
-                {!group.keyReady ? (
-                  <span className="chat-model-picker__group-note">No API key</span>
-                ) : null}
-              </div>
-              <ul className="chat-model-picker__group-list" role="group" aria-label={group.label}>
-                {group.models.map((m) => {
-                  const active = m.id === value;
-                  const ready = group.keyReady;
-                  return (
-                    <li key={m.id} role="presentation">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        disabled={!ready}
-                        title={
-                          ready
-                            ? m.label
-                            : `Add ${group.label} API key in Settings → AI`
-                        }
-                        className={`chat-model-picker__option${active ? " chat-model-picker__option--active" : ""}${!ready ? " chat-model-picker__option--disabled" : ""}`}
-                        onClick={() => {
-                          if (!ready) return;
-                          onChange(m.id);
-                          setOpen(false);
-                        }}
-                      >
-                        <span className="chat-model-picker__option-text">
-                          <span className="chat-model-picker__option-label">
-                            {m.shortLabel}
-                          </span>
-                          <span className="chat-model-picker__option-hint">
-                            {m.hint}
-                          </span>
-                        </span>
-                        {active ? (
-                          <IconCheck
-                            size={12}
-                            className="chat-model-picker__check"
-                          />
-                        ) : (
-                          <span className="chat-model-picker__check-spacer" />
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+          {!keyReady ? (
+            <li className="chat-model-picker__group-label" aria-hidden="true">
+              Claude
+              <span className="chat-model-picker__group-note">No API key</span>
             </li>
-          ))}
+          ) : null}
+          {CLAUDE_MODELS.map((m) => {
+            const active = m.id === value;
+            return (
+              <li key={m.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  disabled={!keyReady}
+                  title={
+                    keyReady
+                      ? m.label
+                      : "Add an Anthropic API key in Settings → AI"
+                  }
+                  className={`chat-model-picker__option${active ? " chat-model-picker__option--active" : ""}${!keyReady ? " chat-model-picker__option--disabled" : ""}`}
+                  onClick={() => {
+                    if (!keyReady) return;
+                    onChange(m.id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="chat-model-picker__option-text">
+                    <span className="chat-model-picker__option-label">
+                      {m.shortLabel}
+                    </span>
+                    <span className="chat-model-picker__option-hint">
+                      {m.hint}
+                    </span>
+                  </span>
+                  {active ? (
+                    <IconCheck
+                      size={12}
+                      className="chat-model-picker__check"
+                    />
+                  ) : (
+                    <span className="chat-model-picker__check-spacer" />
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>

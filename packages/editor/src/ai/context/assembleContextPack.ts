@@ -1,25 +1,6 @@
-import { timelineDurationMs } from "../../engine/time";
 import type { Clip, Track } from "../../project/types";
-import { findClip, getEditorStore } from "../../store/editorStore";
-import type { ChatMessage } from "../persistence/chatTranscript";
-import {
-  listAvailableDomains,
-  listAvailableSkills,
-} from "../catalog";
-import {
-  hasElevenLabsSfx,
-  hasElevenLabsVoice,
-  hasGeminiKey,
-} from "../secrets/aiSecrets";
-import { buildChatTail } from "./chatTail";
 import { summarizeTextProps } from "./textSummary";
-import type {
-  AiClipSummary,
-  AiContextPack,
-  AiSkillId,
-  AiTrackSkim,
-} from "./types";
-import "../catalog/domains";
+import type { AiClipSummary, AiTrackSkim } from "./types";
 
 const SKIM_WINDOW_MS = 12_000;
 const MAX_SKIM_CLIPS_PER_TRACK = 24;
@@ -31,7 +12,7 @@ function staticNum(
   return prop?.staticValue ?? fallback;
 }
 
-function clipLabel(clip: Clip, mediaName?: string): string | undefined {
+export function clipLabel(clip: Clip, mediaName?: string): string | undefined {
   if (clip.kind === "text" && clip.text?.content) {
     const t = clip.text.content.trim();
     return t.length > 40 ? `${t.slice(0, 37)}…` : t;
@@ -42,7 +23,7 @@ function clipLabel(clip: Clip, mediaName?: string): string | undefined {
   return clip.kind;
 }
 
-function summarizeClip(
+export function summarizeClip(
   track: Track,
   clip: Clip,
   mediaName?: string,
@@ -127,7 +108,7 @@ export type BuildTimelineSkimOpts = {
   mediaNameById?: Map<string, string>;
 };
 
-/** Timeline skim around a center time (shared by context pack + read tools). */
+/** Timeline skim around a center time (planned context + inspect). */
 export function buildTimelineSkim(opts: BuildTimelineSkimOpts): AiTrackSkim[] {
   const windowMs = opts.windowMs ?? SKIM_WINDOW_MS;
   const lo = opts.centerMs - windowMs;
@@ -166,84 +147,4 @@ export function buildTimelineSkim(opts: BuildTimelineSkimOpts): AiTrackSkim[] {
       omitted,
     };
   });
-}
-
-export type AssembleContextPackOpts = {
-  messages: ChatMessage[];
-  /** When true, hint that project changed since last assistant turn. */
-  projectChanged?: boolean;
-};
-
-/** Build the host-owned context pack from the live editor store. */
-export function assembleContextPack(
-  opts: AssembleContextPackOpts,
-): AiContextPack {
-  const state = getEditorStore();
-  const project = state.project;
-  const mediaNameById = new Map(
-    project.mediaIndex.map((m) => [m.id, m.name] as const),
-  );
-  const selectedIds = state.selectedClipIds.length
-    ? state.selectedClipIds
-    : state.selectedClipId
-      ? [state.selectedClipId]
-      : [];
-  const selectedSet = new Set(selectedIds);
-
-  const clips: AiClipSummary[] = [];
-  for (const id of selectedIds) {
-    const found = findClip(project.tracks, id);
-    if (!found) continue;
-    const mediaName = found.clip.mediaId
-      ? mediaNameById.get(found.clip.mediaId)
-      : undefined;
-    clips.push(summarizeClip(found.track, found.clip, mediaName));
-  }
-
-  const catalogOpts = {
-    imageGemini: hasGeminiKey(),
-    voiceElevenlabs: hasElevenLabsVoice(),
-    sfxElevenlabs: hasElevenLabsSfx(),
-  };
-  const availableSkills: AiSkillId[] = [
-    "timeline",
-    ...listAvailableSkills(catalogOpts),
-  ];
-
-  return {
-    project: {
-      id: project.id,
-      title: project.title,
-      width: project.width,
-      height: project.height,
-      fps: project.fps,
-      aspectRatio: project.aspectRatio,
-      durationMs: timelineDurationMs(project.tracks),
-      playheadMs: project.playheadMs,
-    },
-    selection: {
-      clipIds: selectedIds,
-      clips,
-    },
-    timelineSkim: buildTimelineSkim({
-      tracks: project.tracks,
-      centerMs: project.playheadMs,
-      selectedIds: selectedSet,
-      mediaNameById,
-    }),
-    chatTail: buildChatTail(opts.messages),
-    availableSkills: [...new Set(availableSkills)],
-    availableDomains: listAvailableDomains(catalogOpts),
-    projectChanged: opts.projectChanged,
-  };
-}
-
-/** Serialize context pack for the system prompt (compact JSON). */
-export function formatContextPackForPrompt(pack: AiContextPack): string {
-  return [
-    "Current IndieCut project context (host-assembled; trust this over guesses):",
-    "```json",
-    JSON.stringify(pack),
-    "```",
-  ].join("\n");
 }

@@ -6,7 +6,7 @@ import {
   placeImageOnTracks,
   type PlaceImageOnTracksResult,
 } from "../../media/placeImageOnTracks";
-import type { Track } from "../../project/types";
+import type { RemoveBgParams, Track } from "../../project/types";
 import { getEditorStore } from "../../store/editorStore";
 import type { GeminiImageMime } from "../providers/gemini";
 
@@ -30,6 +30,8 @@ export type ImportGeneratedImageOpts = {
   exactStart?: boolean;
   preferOverlay?: boolean;
   targetTrackId?: string;
+  /** When set, placed image clip gets chroma remove-bg enabled. */
+  removeBg?: RemoveBgParams;
 };
 
 export type ImportGeneratedImageResult = {
@@ -85,6 +87,7 @@ export async function importGeneratedImageOntoTracks(
     playheadMs: store.project.playheadMs,
     magnetEnabled: store.magnetEnabled,
     pxPerSec: store.timelinePxPerSec,
+    removeBg: opts.removeBg,
   });
   if (!placed) {
     throw new Error("Could not place image on timeline (track locked?)");

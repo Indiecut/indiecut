@@ -1,33 +1,16 @@
-import type {
-  AiSecretsV1,
-  ChatProviderId,
-  ClaudeModelId,
-  OpenAiModelId,
-} from "@indiecut/platform";
+import type { AiSecretsV1, ClaudeModelId } from "@indiecut/platform";
 import {
   CLAUDE_MODELS,
   DEFAULT_CLAUDE_MODEL,
-  DEFAULT_OPENAI_MODEL,
-  OPENAI_MODELS,
-  resolveChatProviderId,
   resolveClaudeModelId,
-  resolveOpenAiModelId,
 } from "../secrets/aiSecrets";
 
 /** Fixed product capabilities — nav items. Add carefully; providers grow under these. */
 export type AiCapabilityId = "chat" | "image" | "voice";
 
-export type AiProviderId =
-  | "anthropic"
-  | "openai-chat"
-  | "gemini-chat"
-  | "gemini"
-  | "openai-image"
-  | "flux"
-  | "elevenlabs"
-  | "openai-tts";
+export type AiProviderId = "anthropic" | "gemini" | "elevenlabs";
 
-export type AiProviderTestId = "anthropic" | "openai" | "gemini" | "elevenlabs";
+export type AiProviderTestId = "anthropic" | "gemini" | "elevenlabs";
 
 export type AiModelOption = {
   id: string;
@@ -47,7 +30,7 @@ export type AiProviderDef = {
   /** Maps this provider's API key onto AiSecretsV1 (v1 storage). */
   apiKeyField?: keyof Pick<
     AiSecretsV1,
-    "anthropicKey" | "openaiKey" | "geminiKey" | "elevenLabsKey"
+    "anthropicKey" | "geminiKey" | "elevenLabsKey"
   >;
   /** Optional extra text fields (e.g. Voice ID). */
   extraFields?: Array<{
@@ -56,9 +39,7 @@ export type AiProviderDef = {
     mapsTo: "elevenLabsVoiceId";
   }>;
   /** Default model stored on secrets. */
-  defaultModelField?: "claudeModelId" | "openaiModelId";
-  /** Chat provider id stored on secrets when this entry is selected. */
-  chatProviderId?: ChatProviderId;
+  defaultModelField?: "claudeModelId";
 };
 
 export type AiCapabilityDef = {
@@ -66,7 +47,6 @@ export type AiCapabilityDef = {
   title: string;
   blurb: string;
   required?: boolean;
-  /** Fallback when secrets do not pick a chat provider. */
   activeProviderId: AiProviderId;
   providers: AiProviderDef[];
 };
@@ -90,32 +70,11 @@ export const AI_CAPABILITIES: readonly AiCapabilityDef[] = [
         testId: "anthropic",
         apiKeyField: "anthropicKey",
         defaultModelField: "claudeModelId",
-        chatProviderId: "anthropic",
         models: CLAUDE_MODELS.map((m) => ({
           id: m.id,
           label: m.label,
           available: true,
         })),
-      },
-      {
-        id: "openai-chat",
-        label: "OpenAI",
-        available: true,
-        testId: "openai",
-        apiKeyField: "openaiKey",
-        defaultModelField: "openaiModelId",
-        chatProviderId: "openai",
-        models: OPENAI_MODELS.map((m) => ({
-          id: m.id,
-          label: m.label,
-          available: true,
-        })),
-      },
-      {
-        id: "gemini-chat",
-        label: "Gemini — soon",
-        available: false,
-        models: [],
       },
     ],
   },
@@ -133,24 +92,7 @@ export const AI_CAPABILITIES: readonly AiCapabilityDef[] = [
         apiKeyField: "geminiKey",
         models: [
           { id: "gemini-image", label: "Gemini image", available: true },
-          {
-            id: "gemini-image-hq",
-            label: "Higher quality — soon",
-            available: false,
-          },
         ],
-      },
-      {
-        id: "openai-image",
-        label: "OpenAI Images — soon",
-        available: false,
-        models: [],
-      },
-      {
-        id: "flux",
-        label: "Flux — soon",
-        available: false,
-        models: [],
       },
     ],
   },
@@ -176,12 +118,6 @@ export const AI_CAPABILITIES: readonly AiCapabilityDef[] = [
           },
         ],
       },
-      {
-        id: "openai-tts",
-        label: "OpenAI TTS — soon",
-        available: false,
-        models: [],
-      },
     ],
   },
 ] as const;
@@ -192,21 +128,8 @@ export function getCapability(id: AiCapabilityId): AiCapabilityDef {
   return found;
 }
 
-/**
- * Resolve the live provider for a capability.
- * Chat uses `secrets.chatProviderId` when provided.
- */
-export function getActiveProvider(
-  cap: AiCapabilityDef,
-  secrets?: Pick<AiSecretsV1, "chatProviderId"> | null,
-): AiProviderDef {
-  if (cap.id === "chat" && secrets) {
-    const chatId = resolveChatProviderId(secrets.chatProviderId);
-    const match = cap.providers.find(
-      (p) => p.available && p.chatProviderId === chatId,
-    );
-    if (match) return match;
-  }
+/** Resolve the live provider for a capability (single active provider per cap). */
+export function getActiveProvider(cap: AiCapabilityDef): AiProviderDef {
   return (
     cap.providers.find((p) => p.id === cap.activeProviderId) ??
     cap.providers.find((p) => p.available) ??
@@ -218,15 +141,9 @@ export function isClaudeModelId(id: string): id is ClaudeModelId {
   return id === "claude-sonnet-5-5" || id === "claude-haiku-5-5";
 }
 
-export function isOpenAiModelId(id: string): id is OpenAiModelId {
-  return (
-    id === "gpt-4o" || id === "gpt-4o-mini" || id === "gpt-6-luna-max"
-  );
-}
+export { resolveClaudeModelId };
 
-export { resolveClaudeModelId, resolveOpenAiModelId, resolveChatProviderId };
-
-export { DEFAULT_CLAUDE_MODEL, DEFAULT_OPENAI_MODEL };
+export { DEFAULT_CLAUDE_MODEL };
 
 /** Whether a capability looks configured enough to show a ready indicator. */
 export function isCapabilityReady(
@@ -234,7 +151,7 @@ export function isCapabilityReady(
   secrets: AiSecretsV1,
 ): boolean {
   const cap = getCapability(capId);
-  const provider = getActiveProvider(cap, secrets);
+  const provider = getActiveProvider(cap);
   if (!provider.apiKeyField) return false;
   const key = secrets[provider.apiKeyField];
   if (typeof key !== "string" || !key.trim()) return false;

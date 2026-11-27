@@ -24,8 +24,75 @@ export type RasterizedText = {
   logicalHeight: number;
 };
 
-/** Tight pad so selection chrome hugs glyphs. */
-const PAD = 4;
+/** Tight pad so selection chrome hugs glyphs (extra room for stroke/descenders). */
+const PAD = 6;
+
+/**
+ * Sample that includes ascenders + descenders so line boxes reserve room for
+ * tails (y/g/p/q) even when the real line is caps-only.
+ */
+export const TEXT_METRICS_PROBE = "Mgypq";
+
+export type GlyphVertMetrics = { ascent: number; descent: number };
+
+type MetricsCtx = {
+  measureText: (text: string) => TextMetrics;
+  textBaseline: CanvasTextBaseline;
+};
+
+/**
+ * Vertical metrics for `textBaseline = "top"` (measure + draw must match).
+ * With top baseline, ink lives mostly in [0, descent]; ascent is usually ~0.
+ * We still keep an alphabetic-style pair for underline / line-box helpers:
+ * ascent ≈ body above the visual baseline, descent ≈ tails below it.
+ */
+export function readGlyphVertMetrics(
+  ctx: MetricsCtx,
+  sample: string,
+  fontSize: number,
+): GlyphVertMetrics {
+  const prev = ctx.textBaseline;
+  // Bound boxes are relative to the active textBaseline — lock to "top"
+  // so height matches paintTextLine (also top).
+  ctx.textBaseline = "top";
+  try {
+    const primary = ctx.measureText(sample.trim() ? sample : "M");
+    const probe = ctx.measureText(TEXT_METRICS_PROBE);
+    const inkHeight = (m: TextMetrics): number => {
+      const fontH =
+        (typeof m.fontBoundingBoxAscent === "number" &&
+        m.fontBoundingBoxAscent > 0
+          ? m.fontBoundingBoxAscent
+          : 0) +
+        (typeof m.fontBoundingBoxDescent === "number" &&
+        m.fontBoundingBoxDescent > 0
+          ? m.fontBoundingBoxDescent
+          : 0);
+      const actualH =
+        (typeof m.actualBoundingBoxAscent === "number" &&
+        m.actualBoundingBoxAscent > 0
+          ? m.actualBoundingBoxAscent
+          : 0) +
+        (typeof m.actualBoundingBoxDescent === "number" &&
+        m.actualBoundingBoxDescent > 0
+          ? m.actualBoundingBoxDescent
+          : 0);
+      return Math.max(fontH, actualH);
+    };
+    // Full ink from the top alignment point down (includes descenders).
+    const topExtent = Math.max(
+      fontSize * 1.15,
+      inkHeight(primary),
+      inkHeight(probe),
+    );
+    // Split into ascent/descent for underline helpers (≈ body / tail).
+    const ascent = Math.max(fontSize * 0.8, topExtent * 0.72);
+    const descent = Math.max(fontSize * 0.3, topExtent - ascent);
+    return { ascent, descent };
+  } finally {
+    ctx.textBaseline = prev;
+  }
+}
 
 /** Default weight — matches pre-Step-1 hardcoded paint. */
 export const DEFAULT_TEXT_FONT_WEIGHT = 600;
@@ -1069,18 +1136,15 @@ function measureTextSizeAt(
   if (!mctx) return null;
 
   mctx.font = textFontCss(t);
+  mctx.textBaseline = "top";
   const lines = t.content.split("\n");
   let ascent = t.fontSize * 0.8;
-  let descent = t.fontSize * 0.25;
+  let descent = t.fontSize * 0.3;
   let maxW = 0;
   for (const line of lines) {
-    const metrics = mctx.measureText(line || "M");
-    if (metrics.actualBoundingBoxAscent > 0) {
-      ascent = Math.max(ascent, metrics.actualBoundingBoxAscent);
-    }
-    if (metrics.actualBoundingBoxDescent > 0) {
-      descent = Math.max(descent, metrics.actualBoundingBoxDescent);
-    }
+    const metrics = readGlyphVertMetrics(mctx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
     maxW = Math.max(maxW, measureLineWidth(mctx, line, t.letterSpacing));
   }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
@@ -1146,25 +1210,29 @@ export function rasterizeText(
   const lines = t.content.split("\n");
 
   const mctxFont = textFontCss(t);
+  // Prefer document canvas (same as measureTextSizeAt) so FontFaces + metrics
+  // match the bitmap size — OffscreenCanvas often reports different boxes.
   const probe =
-    typeof OffscreenCanvas !== "undefined"
-      ? new OffscreenCanvas(1, 1)
-      : document.createElement("canvas");
+    typeof document !== "undefined"
+      ? document.createElement("canvas")
+      : typeof OffscreenCanvas !== "undefined"
+        ? new OffscreenCanvas(1, 1)
+        : null;
+  if (!probe) return null;
   const probeCtx = probe.getContext("2d") as
     | OffscreenCanvasRenderingContext2D
     | CanvasRenderingContext2D
     | null;
   if (!probeCtx) return null;
   probeCtx.font = mctxFont;
-  const metrics0 = probeCtx.measureText(lines[0] || "M");
-  const ascent =
-    metrics0.actualBoundingBoxAscent > 0
-      ? metrics0.actualBoundingBoxAscent
-      : t.fontSize * 0.8;
-  const descent =
-    metrics0.actualBoundingBoxDescent > 0
-      ? metrics0.actualBoundingBoxDescent
-      : t.fontSize * 0.25;
+  probeCtx.textBaseline = "top";
+  let ascent = t.fontSize * 0.8;
+  let descent = t.fontSize * 0.3;
+  for (const line of lines) {
+    const metrics = readGlyphVertMetrics(probeCtx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
+  }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
 
   const maxDim = 8192;
@@ -1182,6 +1250,7 @@ export function rasterizeText(
   if (drawScale !== 1) ctx.scale(drawScale, drawScale);
 
   ctx.font = mctxFont;
+  // Measure + paint both use top so descenders fit the sized bitmap.
   ctx.textBaseline = "top";
   ctx.textAlign = t.letterSpacing ? "left" : t.align;
   ctx.imageSmoothingEnabled = true;

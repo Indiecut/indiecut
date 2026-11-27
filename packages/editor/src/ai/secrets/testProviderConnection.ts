@@ -16,48 +16,6 @@ export type ElevenLabsTestBundle = {
   sfx: ProviderTestResult;
 };
 
-async function testOpenAI(apiKey: string): Promise<ProviderTestResult> {
-  const key = apiKey.trim();
-  if (!key) return { ok: false, error: "Add an API key first" };
-
-  const bridge = getPlatform();
-  if (bridge?.ai?.probeOpenAI) {
-    try {
-      const res = await bridge.ai.probeOpenAI({ apiKey: key });
-      if (res.ok) return { ok: true, detail: "Connected" };
-      return { ok: false, error: res.error || "Connection failed" };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "Connection failed",
-      };
-    }
-  }
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/models?limit=1", {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${key}`,
-      },
-    });
-    if (response.ok) return { ok: true, detail: "Connected" };
-    const detail = await safeErrorText(response);
-    return {
-      ok: false,
-      error: summarizeHttpError(response.status, detail, "OpenAI"),
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "Could not reach OpenAI (network / CORS)",
-    };
-  }
-}
-
 async function testAnthropic(apiKey: string): Promise<ProviderTestResult> {
   const key = apiKey.trim();
   if (!key) return { ok: false, error: "Add an API key first" };
@@ -294,8 +252,6 @@ export async function testProviderConnection(
   switch (testId) {
     case "anthropic":
       return testAnthropic(apiKey);
-    case "openai":
-      return testOpenAI(apiKey);
     case "gemini":
       return testGemini(apiKey);
     case "elevenlabs": {

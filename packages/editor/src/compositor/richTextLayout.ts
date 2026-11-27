@@ -13,6 +13,7 @@ import {
   contentInsets,
   parseLinearGradientCss,
   paintBubble,
+  readGlyphVertMetrics,
   resolveText,
   textHasShadow,
   type ParsedLinearGradient,
@@ -207,7 +208,7 @@ export function layoutRichText(
           style: baseStyle,
           width: 0,
           ascent: baseStyle.fontSize * 0.8,
-          descent: baseStyle.fontSize * 0.25,
+          descent: baseStyle.fontSize * 0.3,
         });
         continue;
       }
@@ -216,21 +217,14 @@ export function layoutRichText(
       void run;
       ctx.font = fontCss(baseStyle);
       const m = ctx.measureText(ch);
-      const ascent =
-        m.actualBoundingBoxAscent > 0
-          ? m.actualBoundingBoxAscent
-          : baseStyle.fontSize * 0.8;
-      const descent =
-        m.actualBoundingBoxDescent > 0
-          ? m.actualBoundingBoxDescent
-          : baseStyle.fontSize * 0.25;
+      const vert = readGlyphVertMetrics(ctx, ch, baseStyle.fontSize);
       raw.push({
         ch,
         index: index++,
         style: baseStyle,
         width: m.width,
-        ascent,
-        descent,
+        ascent: vert.ascent,
+        descent: vert.descent,
       });
     }
   }
@@ -250,7 +244,7 @@ export function layoutRichText(
   const flush = () => {
     const glyphs: RichGlyph[] = [];
     let ascent = box.fontSize * 0.8;
-    let descent = box.fontSize * 0.25;
+    let descent = box.fontSize * 0.3;
     let x = 0;
     for (let i = 0; i < cur.length; i++) {
       const g = cur[i]!;
@@ -299,7 +293,7 @@ export function layoutRichText(
       glyphs: [],
       width: 1,
       ascent: box.fontSize * 0.8,
-      descent: box.fontSize * 0.25,
+      descent: box.fontSize * 0.3,
       height: box.fontSize,
       y: 0,
     });

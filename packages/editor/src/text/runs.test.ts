@@ -9,6 +9,7 @@ import {
   replaceContentKeepingBaseStyle,
   runsFromPlain,
   sliceRuns,
+  syncRunsToContent,
 } from "./runs";
 
 describe("text runs", () => {
@@ -66,4 +67,57 @@ describe("text runs", () => {
     assert.equal(next.content, "New text");
     assert.equal(next.runs?.[0]?.style?.color, "#abcabc");
   });
+
+  it("syncRunsToContent keeps mixed styles when deleting one character", () => {
+    const props = normalizeTextProps({
+      content: "Hi!",
+      runs: [
+        { text: "Hi", style: { color: "#ff0000", fontSize: 40 } },
+        { text: "!", style: { color: "#00ff00", fontSize: 60 } },
+      ],
+    });
+    const next = syncRunsToContent(props, "H!");
+    assert.equal(next.content, "H!");
+    assert.equal(next.runs?.length, 2);
+    assert.equal(next.runs?.[0]?.text, "H");
+    assert.equal(next.runs?.[0]?.style?.color, "#ff0000");
+    assert.equal(next.runs?.[1]?.text, "!");
+    assert.equal(next.runs?.[1]?.style?.color, "#00ff00");
+  });
+
+  it("syncRunsToContent keeps neighbor style when inserting", () => {
+    const props = normalizeTextProps({
+      content: "AC",
+      runs: [
+        { text: "A", style: { color: "#ff0000" } },
+        { text: "C", style: { color: "#0000ff" } },
+      ],
+    });
+    const next = syncRunsToContent(props, "ABC");
+    assert.equal(next.content, "ABC");
+    assert.equal(next.runs?.[0]?.style?.color, "#ff0000");
+    assert.equal(next.runs?.[0]?.text, "AB");
+    assert.equal(next.runs?.[1]?.style?.color, "#0000ff");
+    assert.equal(next.runs?.[1]?.text, "C");
+  });
+
+  it("syncRunsToContent preserves styles on both sides of a mid replace", () => {
+    const props = normalizeTextProps({
+      content: "Hello World!",
+      runs: [
+        { text: "Hello ", style: { color: "#f00" } },
+        { text: "World", style: { color: "#0f0", fontWeight: 800 } },
+        { text: "!", style: { color: "#00f" } },
+      ],
+    });
+    const next = syncRunsToContent(props, "Hello Earth!");
+    assert.equal(next.content, "Hello Earth!");
+    assert.equal(next.runs?.[0]?.style?.color, "#f00");
+    assert.match(next.runs?.[0]?.text ?? "", /^Hello /);
+    // Inserted text inherits the left neighbor; trailing "!" keeps its style.
+    const last = next.runs?.[next.runs.length - 1];
+    assert.equal(last?.text, "!");
+    assert.equal(last?.style?.color, "#00f");
+  });
 });
+

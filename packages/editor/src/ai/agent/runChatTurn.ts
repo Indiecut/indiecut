@@ -1,8 +1,13 @@
 import {
-  assembleContextPack,
-  formatContextPackForPrompt,
-} from "../context/assembleContextPack";
+  assemblePlannedContext,
+  formatPlannedContextForPrompt,
+} from "../context/assemblePlannedContext";
 import { captureCheapComposite } from "../context/captureCheapComposite";
+import {
+  ContextPlannerError,
+  contextPlanDetail,
+  planContext,
+} from "../context/contextPlanner";
 import type {
   ChatInteractionMode,
   CheapCompositeAttachment,
@@ -676,31 +681,70 @@ export async function runChatTurn(
 ): Promise<RunChatTurnResult> {
   const progress = opts.onProgress;
 
+  const planStep = emitStep(progress, {
+    kind: "status",
+    label: "Planning context",
+    status: "running",
+  });
+
+  const historyForContext: ChatMessage[] = [
+    ...opts.historyMessages,
+    {
+      id: "pending",
+      role: "user",
+      content: opts.userText,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  let contextPlan;
+  try {
+    const planText =
+      opts.userText.trim() ||
+      (opts.userImages && opts.userImages.length > 0
+        ? "Please use the attached reference image(s)."
+        : "");
+    contextPlan = await planContext({
+      apiKey: opts.apiKey,
+      model: opts.model,
+      userText: planText,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    const detail =
+      err instanceof ContextPlannerError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Context planning failed";
+    updateStep(progress, planStep, "error", detail);
+    throw err instanceof ContextPlannerError
+      ? err
+      : new ContextPlannerError(detail, { cause: err });
+  }
+
+  updateStep(progress, planStep, "done", contextPlanDetail(contextPlan));
+
   const contextStep = emitStep(progress, {
     kind: "status",
     label: "Gathering project context",
     status: "running",
   });
 
-  const pack = assembleContextPack({
-    messages: [
-      ...opts.historyMessages,
-      {
-        id: "pending",
-        role: "user",
-        content: opts.userText,
-        createdAt: new Date().toISOString(),
-      },
-    ],
+  const planned = assemblePlannedContext({
+    plan: contextPlan,
+    messages: historyForContext,
   });
 
   updateStep(
     progress,
     contextStep,
     "done",
-    pack.selection.clipIds.length
-      ? `${pack.selection.clipIds.length} selected`
-      : "No selection",
+    planned.targets.length
+      ? `${planned.targets.length} target clip(s)`
+      : contextPlan.slices.includes("local_skim")
+        ? "Local skim"
+        : "Session only",
   );
 
   const interactionMode: ChatInteractionMode =
@@ -714,7 +758,7 @@ export async function runChatTurn(
       ? buildAskSystemPrompt()
       : buildSystemPrompt(catalogOpts),
     "",
-    formatContextPackForPrompt(pack),
+    formatPlannedContextForPrompt(planned),
   ].join("\n");
 
   const tools =
@@ -725,8 +769,7 @@ export async function runChatTurn(
   if (
     shouldAttachCheapComposite({
       mode: opts.visionMode,
-      userText: opts.userText,
-      hasSelection: pack.selection.clipIds.length > 0,
+      plannerWantVision: contextPlan.wantVision,
     })
   ) {
     const visionStep = emitStep(progress, {

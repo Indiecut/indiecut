@@ -64,28 +64,6 @@ export type AiChatTurnSummary = {
   summary: string;
 };
 
-export type AiContextPack = {
-  project: {
-    id: string;
-    title: string;
-    width: number;
-    height: number;
-    fps: number;
-    aspectRatio: string;
-    durationMs: number;
-    playheadMs: number;
-  };
-  selection: {
-    clipIds: string[];
-    clips: AiClipSummary[];
-  };
-  timelineSkim: AiTrackSkim[];
-  chatTail: AiChatTurnSummary[];
-  availableSkills: AiSkillId[];
-  availableDomains: string[];
-  projectChanged?: boolean;
-};
-
 export type VisionMode = "auto" | "always" | "off";
 
 export type CheapCompositeAttachment = {

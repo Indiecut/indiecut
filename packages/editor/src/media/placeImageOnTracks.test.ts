@@ -48,4 +48,27 @@ describe("placeImageOnTracks", () => {
     assert.ok(placed);
     assert.equal(placed!.trackId, "o1");
   });
+
+  it("attaches removeBg when provided (sticker cutouts)", () => {
+    const placed = placeImageOnTracks({
+      tracks: [emptyVideoTrack()],
+      assetId: "media_abc",
+      playheadMs: 0,
+      magnetEnabled: false,
+      pxPerSec: 100,
+      removeBg: {
+        enabled: true,
+        color: {
+          keyColor: [16, 185, 129],
+          tolerance: 0.34,
+          softness: 0.18,
+          spill: 0.72,
+          choke: 0.18,
+        },
+      },
+    });
+    assert.ok(placed);
+    assert.equal(placed!.clip.removeBg?.enabled, true);
+    assert.deepEqual(placed!.clip.removeBg?.color.keyColor, [16, 185, 129]);
+  });
 });
