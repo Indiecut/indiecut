@@ -254,6 +254,7 @@ export function createWebPlatform(): IndieCutBridge {
     capabilities: {
       revealInFolder: false,
       openLocalPath: false,
+      cloudAi: false,
     },
     dialog: {
       pickProjectFolder,

@@ -10,6 +10,7 @@ import {
   openProjectAt,
   prepareNewProjectFlow,
 } from "../project/session";
+import { isCloudAiAvailable } from "../ai/isCloudAiAvailable";
 import { useEditorStore } from "../store/editorStore";
 import "./Header.css";
 import { getPlatform } from "@indiecut/platform";
@@ -34,6 +35,7 @@ export function Header() {
   const setAiSettingsOpen = useEditorStore((s) => s.setAiSettingsOpen);
   const chatOpen = useEditorStore((s) => s.chatOpen);
   const toggleChatOpen = useEditorStore((s) => s.toggleChatOpen);
+  const cloudAi = isCloudAiAvailable();
   const setDeleteProjectDialogOpen = useEditorStore(
     (s) => s.setDeleteProjectDialogOpen,
   );
@@ -182,17 +184,19 @@ export function Header() {
                 </>
               ) : null}
               <div className="app-header__dropdown-sep" />
-              <button
-                type="button"
-                className="app-header__dropdown-item"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setAiSettingsOpen(true);
-                }}
-              >
-                AI settings…
-              </button>
+              {cloudAi ? (
+                <button
+                  type="button"
+                  className="app-header__dropdown-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAiSettingsOpen(true);
+                  }}
+                >
+                  AI settings…
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="app-header__dropdown-item"
@@ -218,16 +222,18 @@ export function Header() {
       </div>
 
       <div className="app-header__right">
-        <button
-          type="button"
-          className={`app-header__icon-btn${chatOpen ? " app-header__icon-btn--active" : ""}`}
-          title="Chat"
-          aria-label="Chat"
-          aria-pressed={chatOpen}
-          onClick={() => toggleChatOpen()}
-        >
-          <IconChat />
-        </button>
+        {cloudAi ? (
+          <button
+            type="button"
+            className={`app-header__icon-btn${chatOpen ? " app-header__icon-btn--active" : ""}`}
+            title="Chat"
+            aria-label="Chat"
+            aria-pressed={chatOpen}
+            onClick={() => toggleChatOpen()}
+          >
+            <IconChat />
+          </button>
+        ) : null}
         <button
           type="button"
           className="app-header__icon-btn"

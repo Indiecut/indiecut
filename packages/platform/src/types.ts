@@ -80,6 +80,11 @@ export interface IndieCutCapabilities {
   revealInFolder: boolean;
   /** Open file with the OS default app (desktop only). */
   openLocalPath: boolean;
+  /**
+   * Cloud AI chat + Settings → AI (desktop Anthropic bridge).
+   * Omit / false on web — browser cannot call Anthropic (CORS).
+   */
+  cloudAi?: boolean;
 }
 
 /** Claude model allowlist ids. */

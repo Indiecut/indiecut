@@ -5,6 +5,7 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import { ChatPanel } from "../ai/chat/ChatPanel";
+import { isCloudAiAvailable } from "../ai/isCloudAiAvailable";
 import {
   CHAT_DEFAULT_WIDTH_PERCENT,
   CHAT_MAX_WIDTH_PERCENT,
@@ -25,6 +26,8 @@ import "./AppShell.css";
 export function AppShell() {
   const timelineHostRef = useRef<HTMLDivElement>(null);
   const chatOpen = useEditorStore((s) => s.chatOpen);
+  const cloudAi = isCloudAiAvailable();
+  const showChat = cloudAi && chatOpen;
   const chatWidth = getChatUiPrefs().widthPercent || CHAT_DEFAULT_WIDTH_PERCENT;
 
   const getTimelineWidth = useCallback(() => {
@@ -75,7 +78,7 @@ export function AppShell() {
       <Header />
       <RecordDialog />
       <div className="app-shell__body">
-        {chatOpen ? (
+        {showChat ? (
           <PanelGroup direction="horizontal">
             <Panel
               id="editor-main"

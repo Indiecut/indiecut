@@ -6,6 +6,7 @@ import { CropDialog } from "./layout/CropDialog";
 import { DeleteProjectDialog } from "./layout/DeleteProjectDialog";
 import { ExportModal } from "./layout/ExportModal";
 import { NeedProjectDialog } from "./layout/NeedProjectDialog";
+import { isCloudAiAvailable } from "./ai/isCloudAiAvailable";
 import { loadAiSecrets } from "./ai/secrets/aiSecrets";
 import { AiSettingsPanel } from "./layout/AiSettingsPanel";
 import { ProjectSettingsModal } from "./layout/ProjectSettingsModal";
@@ -16,6 +17,7 @@ import { useEditorStore } from "./store/editorStore";
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const cloudAi = isCloudAiAvailable();
 
   useEffect(() => {
     let cancelled = false;
@@ -25,11 +27,16 @@ export default function App() {
           bootProjectSession(),
           loadShortcutBindings(),
           loadChatUiPrefs(),
-          loadAiSecrets(),
+          cloudAi
+            ? loadAiSecrets()
+            : Promise.resolve(),
           ensureTextFontsLoaded().catch(() => undefined),
         ]);
         if (cancelled) return;
-        useEditorStore.getState().hydrateChatOpen(chatUi.open);
+        // Web has no Claude bridge — never reopen a persisted chat panel.
+        useEditorStore
+          .getState()
+          .hydrateChatOpen(cloudAi ? chatUi.open : false);
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -37,7 +44,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cloudAi]);
 
   // After boot (and whenever the tab becomes visible again), reopen Interrupted
   // export UI if a checkpoint/session survived sleep or renderer reload.
@@ -96,7 +103,7 @@ export default function App() {
       <ExportModal />
       <CropDialog />
       <ShortcutsPanel />
-      <AiSettingsPanel />
+      {cloudAi ? <AiSettingsPanel /> : null}
     </>
   );
 }

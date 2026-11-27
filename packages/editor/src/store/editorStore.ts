@@ -31,6 +31,7 @@ import {
 import { pruneEmptyTracks, rippleDeleteMany } from "../engine/timelineOps";
 import { clipLocalMs, timelineDurationMs } from "../engine/time";
 import type { ExportProgress, ExportSettings } from "../export/types";
+import { isCloudAiAvailable } from "../ai/isCloudAiAvailable";
 import { saveChatUiPrefs } from "../prefs/appPrefs";
 import { createEmptyProject } from "../project/createProject";
 import type {
@@ -1160,8 +1161,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       exportDraft: null,
     }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
-  setAiSettingsOpen: (open) => set({ aiSettingsOpen: open }),
+  setAiSettingsOpen: (open) => {
+    if (open && !isCloudAiAvailable()) return;
+    set({ aiSettingsOpen: open });
+  },
   setChatOpen: (open) => {
+    if (open && !isCloudAiAvailable()) return;
     const next = Boolean(open);
     set({ chatOpen: next });
     void saveChatUiPrefs({ open: next });
@@ -1170,7 +1175,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().setChatOpen(!get().chatOpen);
   },
   /** Apply prefs loaded from IndexedDB during app boot (no re-write). */
-  hydrateChatOpen: (open: boolean) => set({ chatOpen: Boolean(open) }),
+  hydrateChatOpen: (open: boolean) =>
+    set({ chatOpen: isCloudAiAvailable() ? Boolean(open) : false }),
   setCropDialogOpen: (open) => set({ cropDialogOpen: open }),
   setEditorTool: (tool) => set({ editorTool: tool }),
   setShuttleRate: (rate) => set({ shuttleRate: rate }),

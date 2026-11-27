@@ -15,6 +15,7 @@ import {
   type AiSecretsV1,
   type ClaudeModelId,
 } from "../ai/secrets/aiSecrets";
+import { isCloudAiAvailable } from "../ai/isCloudAiAvailable";
 import {
   testElevenLabsConnection,
   testProviderConnection,
@@ -169,7 +170,7 @@ export function AiSettingsPanel() {
     return out;
   }, [draft]);
 
-  if (!open) return null;
+  if (!open || !isCloudAiAvailable()) return null;
 
   const markDirty = () => {
     setSaved(false);

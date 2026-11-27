@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useEditorStore } from "../../store/editorStore";
 import type { CaptionCue, Clip, Track } from "../../project/types";
+import { isCloudAiAvailable } from "../isCloudAiAvailable";
 import {
   hasElevenLabsKey,
   loadAiSecrets,
@@ -148,33 +149,46 @@ export function CaptionsLibrary() {
   const [provider, setProvider] = useState<CaptionSttProvider>(
     DEFAULT_CAPTION_STT_PROVIDER,
   );
-  const [elevenLabsReady, setElevenLabsReady] = useState(() =>
-    hasElevenLabsKey(),
+  const cloudAi = isCloudAiAvailable();
+  const [elevenLabsReady, setElevenLabsReady] = useState(
+    () => cloudAi && hasElevenLabsKey(),
   );
   const [job, setJob] = useState<JobState>(IDLE);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const sttProviders = useMemo(
+    () =>
+      cloudAi
+        ? CAPTION_STT_PROVIDERS
+        : CAPTION_STT_PROVIDERS.filter((p) => p.id !== "elevenlabs"),
+    [cloudAi],
+  );
+
   useEffect(() => {
+    if (!cloudAi) {
+      setElevenLabsReady(false);
+      return;
+    }
     void loadAiSecrets().then(() => {
       setElevenLabsReady(hasElevenLabsKey());
     });
     return subscribeAiSecrets(() => {
       setElevenLabsReady(hasElevenLabsKey());
     });
-  }, []);
+  }, [cloudAi]);
 
   useEffect(() => {
-    if (!elevenLabsReady && provider === "elevenlabs") {
+    if ((!cloudAi || !elevenLabsReady) && provider === "elevenlabs") {
       setProvider(DEFAULT_CAPTION_STT_PROVIDER);
     }
-  }, [elevenLabsReady, provider]);
+  }, [cloudAi, elevenLabsReady, provider]);
 
   const isRunning = job.status === "running";
   const hasCaption = captionClips.length > 0;
   const providerMeta =
-    CAPTION_STT_PROVIDERS.find((p) => p.id === provider) ??
-    CAPTION_STT_PROVIDERS[0]!;
+    sttProviders.find((p) => p.id === provider) ??
+    sttProviders[0]!;
 
   const handleGenerate = async () => {
     if (isRunning) return;
@@ -346,7 +360,7 @@ export function CaptionsLibrary() {
                   setProvider(e.target.value as CaptionSttProvider)
                 }
               >
-                {CAPTION_STT_PROVIDERS.map((opt) => (
+                {sttProviders.map((opt) => (
                   <option
                     key={opt.id}
                     value={opt.id}
@@ -423,7 +437,7 @@ export function CaptionsLibrary() {
                   setProvider(e.target.value as CaptionSttProvider)
                 }
               >
-                {CAPTION_STT_PROVIDERS.map((opt) => (
+                {sttProviders.map((opt) => (
                   <option
                     key={opt.id}
                     value={opt.id}
