@@ -52,6 +52,8 @@ import {
   type StickerManifestEntry,
 } from "../stickers/manifest";
 import { stickerThumbDataUrl } from "../stickers/rasterizeSvg";
+import { defaultShapeStickerStyle } from "../stickers/shapeStickerSvg";
+import { SHAPE_STICKER_ID } from "../project/types";
 import { useEditorStore } from "../store/editorStore";
 import {
   loadTextTemplateManifest,
@@ -738,7 +740,7 @@ function TextTemplateCard({ entry }: { entry: TextTemplateEntry }) {
 function StickersLibrary() {
   const [stickers, setStickers] = useState<StickerManifestEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [group, setGroup] = useState("social");
+  const [group, setGroup] = useState("shapes");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -749,7 +751,7 @@ function StickersLibrary() {
         if (cancelled) return;
         setStickers(manifest.stickers);
         const groups = stickerGroupsFromManifest(manifest.stickers);
-        if (groups.length > 0 && !groups.some((g) => g.id === "social")) {
+        if (groups.length > 0 && !groups.some((g) => g.id === "shapes")) {
           setGroup(groups[0]!.id);
         }
       } catch (err) {
@@ -824,8 +826,20 @@ function StickersLibrary() {
 }
 
 function StickerCard({ entry }: { entry: StickerManifestEntry }) {
+  const isShape =
+    entry.group === "shapes" || entry.id.startsWith(`${SHAPE_STICKER_ID}:`);
+  const shapePreset = isShape
+    ? (entry.template as Parameters<typeof defaultShapeStickerStyle>[0])
+    : null;
+  const thumbStyle = shapePreset
+    ? defaultShapeStickerStyle(shapePreset)
+    : null;
   const add = () => {
-    void addStickerToTimeline(entry.id);
+    void addStickerToTimeline(
+      isShape ? SHAPE_STICKER_ID : entry.id,
+      undefined,
+      thumbStyle ?? undefined,
+    );
   };
   return (
     <div
@@ -842,13 +856,20 @@ function StickerCard({ entry }: { entry: StickerManifestEntry }) {
         }
       }}
       onDragStart={(e) => {
-        e.dataTransfer.setData(STICKER_DRAG_MIME, entry.id);
+        e.dataTransfer.setData(
+          STICKER_DRAG_MIME,
+          isShape ? `${SHAPE_STICKER_ID}:${entry.template}` : entry.id,
+        );
         e.dataTransfer.effectAllowed = "copy";
       }}
     >
       <div className="media-card__thumb media-card__thumb--sticker">
         <img
-          src={stickerThumbDataUrl(entry.id, 128)}
+          src={stickerThumbDataUrl(
+            isShape ? SHAPE_STICKER_ID : entry.id,
+            128,
+            thumbStyle,
+          )}
           alt=""
           loading="lazy"
           decoding="async"

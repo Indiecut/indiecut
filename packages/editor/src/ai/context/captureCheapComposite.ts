@@ -2,8 +2,9 @@ import { getEditorStore } from "../../store/editorStore";
 import { capturePreviewComposite } from "../../preview/previewWorkerClient";
 import type { CheapCompositeAttachment } from "./types";
 
-const CHEAP_MAX_WIDTH = 768;
-const CHEAP_QUALITY = 0.7;
+/** Cheap turn attach — token cost tracks dimensions more than JPEG quality. */
+const CHEAP_MAX_WIDTH = 640;
+const CHEAP_QUALITY = 0.65;
 
 function bufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);

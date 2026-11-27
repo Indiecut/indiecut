@@ -2,15 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import {
   evaluateClipMask,
   maskAnimatablePath,
+  maskPointLeaf,
   type AnimatablePath,
   type MaskAnimatableLeaf,
 } from "../engine/animatable";
 import { clipLocalMs } from "../engine/time";
+import {
+  presetPoints,
+  type VectorShapePreset,
+} from "../geometry/vectorShape";
 import { IconChevronDown } from "../icons/Icons";
 import {
   createDefaultMask,
   maskDisplayName,
   replaceMaskType,
+  staticShapePoints,
 } from "../project/maskDefaults";
 import type {
   Clip,
@@ -40,6 +46,7 @@ const MASK_TYPES: { type: MaskType; label: string }[] = [
   { type: "stars", label: "Stars" },
   { type: "heart", label: "Heart" },
   { type: "text", label: "Text" },
+  { type: "custom", label: "Custom" },
 ];
 
 const CLOSED: MaskType[] = [
@@ -48,6 +55,19 @@ const CLOSED: MaskType[] = [
   "stars",
   "heart",
   "text",
+  "custom",
+];
+
+const CUSTOM_SEED_PRESETS: {
+  id: Exclude<VectorShapePreset, "custom">;
+  label: string;
+}[] = [
+  { id: "star", label: "Star" },
+  { id: "circle", label: "Circle" },
+  { id: "hexagon", label: "Hex" },
+  { id: "heart", label: "Heart" },
+  { id: "arrow", label: "Arrow" },
+  { id: "diamond", label: "Diamond" },
 ];
 
 function maskGroupPaths(mask: ClipMask): AnimatablePath[] {
@@ -63,6 +83,11 @@ function maskGroupPaths(mask: ClipMask): AnimatablePath[] {
   }
   if (mask.cornerRadius) leaves.push("cornerRadius");
   if (mask.stripGap) leaves.push("stripGap");
+  if (mask.points?.length) {
+    for (let i = 0; i < mask.points.length; i++) {
+      leaves.push(maskPointLeaf(i, "x"), maskPointLeaf(i, "y"));
+    }
+  }
   return leaves.map((leaf) => maskAnimatablePath(mask.id, leaf));
 }
 
@@ -123,6 +148,15 @@ function MaskTypeIcon({ type }: { type: MaskType }) {
         >
           T
         </text>
+      )}
+      {type === "custom" && (
+        <path
+          d="M8 20 L12 8 L18 14 L24 10 L22 22 L10 24 Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
       )}
     </svg>
   );
@@ -254,6 +288,15 @@ export function VideoMaskPanel({
     active?.type === "rectangle" || active?.type === "stars";
   const supportsGap = active?.type === "filmstrip";
   const supportsText = active?.type === "text";
+  const supportsCustom = active?.type === "custom";
+
+  const seedCustomPreset = (preset: Exclude<VectorShapePreset, "custom">) => {
+    if (!active || locked || !supportsCustom) return;
+    gesture.commit(
+      updateActive({ points: staticShapePoints(presetPoints(preset)) })!,
+      "Mask",
+    );
+  };
 
   const resolvedActive =
     active && localMs !== null
@@ -585,6 +628,27 @@ export function VideoMaskPanel({
                     }}
                   />
                 </InspectorKeyframeRow>
+              )}
+
+              {supportsCustom && (
+                <label className="inspector-field inspector-field--stack">
+                  <span className="inspector-field__label">
+                    Shape seed ({active.points?.length ?? 0} pts)
+                  </span>
+                  <div className="mask-chip-row">
+                    {CUSTOM_SEED_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="mask-chip"
+                        disabled={locked}
+                        onClick={() => seedCustomPreset(p.id)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </label>
               )}
 
               {supportsText && active.text && (

@@ -73,6 +73,7 @@ const PROJECT_SUBDIRS = [
 
 /** @type {Map<string, AbortController>} */
 const anthropicStreams = new Map();
+const openaiStreams = new Map();
 
 function aiSecretsPath() {
   return path.join(app.getPath("userData"), "ai-secrets.bin");
@@ -577,6 +578,7 @@ handle("secrets:setAiSecrets", async (_event, next) => {
     version: 1,
     anthropicKey:
       typeof next.anthropicKey === "string" ? next.anthropicKey : undefined,
+    openaiKey: typeof next.openaiKey === "string" ? next.openaiKey : undefined,
     geminiKey: typeof next.geminiKey === "string" ? next.geminiKey : undefined,
     elevenLabsKey:
       typeof next.elevenLabsKey === "string" ? next.elevenLabsKey : undefined,
@@ -584,11 +586,27 @@ handle("secrets:setAiSecrets", async (_event, next) => {
       typeof next.elevenLabsVoiceId === "string"
         ? next.elevenLabsVoiceId
         : undefined,
+    elevenLabsSfxOk:
+      next.elevenLabsSfxOk === true
+        ? true
+        : next.elevenLabsSfxOk === false
+          ? false
+          : undefined,
+    chatProviderId:
+      next.chatProviderId === "openai" || next.chatProviderId === "anthropic"
+        ? next.chatProviderId
+        : "anthropic",
     claudeModelId:
       next.claudeModelId === "claude-haiku-5-5" ||
       next.claudeModelId === "claude-sonnet-5-5"
         ? next.claudeModelId
         : "claude-sonnet-5-5",
+    openaiModelId:
+      next.openaiModelId === "gpt-4o" ||
+      next.openaiModelId === "gpt-4o-mini" ||
+      next.openaiModelId === "gpt-6-luna-max"
+        ? next.openaiModelId
+        : "gpt-4o",
   };
   const filePath = aiSecretsPath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -679,7 +697,19 @@ handle("ai:anthropicStream", async (event, opts) => {
         if (!data || data === "[DONE]") continue;
         try {
           const parsed = JSON.parse(data);
-          if (parsed.type === "content_block_start") {
+          if (parsed.type === "message_start" && parsed.message?.usage) {
+            send({
+              streamId,
+              type: "usage",
+              usage: parsed.message.usage,
+            });
+          } else if (parsed.type === "message_delta" && parsed.usage) {
+            send({
+              streamId,
+              type: "usage",
+              usage: parsed.usage,
+            });
+          } else if (parsed.type === "content_block_start") {
             const block = parsed.content_block;
             const index =
               typeof parsed.index === "number" ? parsed.index : -1;
@@ -805,6 +835,258 @@ handle("ai:anthropicProbe", async (_event, opts) => {
       error: detail
         ? `Anthropic HTTP ${response.status}: ${detail}`
         : `Anthropic HTTP ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+});
+
+handle("ai:openaiStream", async (event, opts) => {
+  const streamId = assertString(opts?.streamId, "stream id");
+  const apiKey = assertString(opts?.apiKey, "api key");
+  const model = assertString(opts?.model, "model");
+  const messages = Array.isArray(opts?.messages) ? opts.messages : [];
+  const tools = Array.isArray(opts?.tools) ? opts.tools : undefined;
+  const reasoningEffort =
+    opts?.reasoningEffort === "none" ||
+    opts?.reasoningEffort === "low" ||
+    opts?.reasoningEffort === "medium" ||
+    opts?.reasoningEffort === "high" ||
+    opts?.reasoningEffort === "xhigh" ||
+    opts?.reasoningEffort === "max"
+      ? opts.reasoningEffort
+      : undefined;
+
+  const existing = openaiStreams.get(streamId);
+  if (existing) {
+    existing.abort();
+    openaiStreams.delete(streamId);
+  }
+
+  const controller = new AbortController();
+  openaiStreams.set(streamId, controller);
+
+  const send = (payload) => {
+    if (event.sender.isDestroyed()) return;
+    event.sender.send("ai:openai-event", payload);
+  };
+
+  try {
+    const body = {
+      model,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      // gpt-6-luna defaults to medium effort; Chat Completions rejects
+      // function tools unless reasoning_effort is explicitly "none".
+      if (model === "gpt-6-luna" || model === "gpt-6-luna-max") {
+        body.model = "gpt-6-luna";
+        body.reasoning_effort = "none";
+      } else if (reasoningEffort) {
+        body.reasoning_effort = reasoningEffort;
+      }
+    } else if (reasoningEffort === "max") {
+      // Chat Completions does not accept `max` (Responses-only); clamp to xhigh.
+      body.reasoning_effort = "xhigh";
+    } else if (reasoningEffort) {
+      body.reasoning_effort = reasoningEffort;
+    } else if (model === "gpt-6-luna-max") {
+      body.model = "gpt-6-luna";
+      body.reasoning_effort = "xhigh";
+    }
+
+    const response = await net.fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch {
+        /* ignore */
+      }
+      send({
+        streamId,
+        type: "error",
+        error: `OpenAI HTTP ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}`,
+      });
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      send({ streamId, type: "error", error: "No response body" });
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    /** @type {Map<number, { id: string, name: string, arguments: string }>} */
+    const toolBuilders = new Map();
+    /** @type {number[]} */
+    const toolOrder = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            send({
+              streamId,
+              type: "error",
+              error: parsed.error?.message || "OpenAI stream error",
+            });
+            return;
+          }
+          if (parsed.usage) {
+            send({
+              streamId,
+              type: "usage",
+              usage: {
+                input_tokens: parsed.usage.prompt_tokens,
+                output_tokens: parsed.usage.completion_tokens,
+              },
+            });
+          }
+          const choice = Array.isArray(parsed.choices)
+            ? parsed.choices[0]
+            : null;
+          const delta = choice?.delta;
+          if (!delta) continue;
+          if (typeof delta.content === "string" && delta.content) {
+            send({ streamId, type: "delta", text: delta.content });
+          }
+          if (Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const index = typeof tc.index === "number" ? tc.index : 0;
+              let builder = toolBuilders.get(index);
+              if (!builder) {
+                builder = {
+                  id: typeof tc.id === "string" ? tc.id : "",
+                  name: "",
+                  arguments: "",
+                };
+                toolBuilders.set(index, builder);
+                toolOrder.push(index);
+              }
+              if (typeof tc.id === "string" && tc.id) builder.id = tc.id;
+              if (tc.function) {
+                if (typeof tc.function.name === "string" && tc.function.name) {
+                  builder.name = tc.function.name;
+                }
+                if (typeof tc.function.arguments === "string") {
+                  builder.arguments += tc.function.arguments;
+                }
+              }
+            }
+          }
+        } catch {
+          /* skip malformed SSE chunk */
+        }
+      }
+    }
+
+    for (const index of toolOrder) {
+      const builder = toolBuilders.get(index);
+      if (!builder) continue;
+      let input = {};
+      try {
+        const parsedInput = JSON.parse(builder.arguments || "{}");
+        if (
+          parsedInput &&
+          typeof parsedInput === "object" &&
+          !Array.isArray(parsedInput)
+        ) {
+          input = parsedInput;
+        }
+      } catch {
+        input = {};
+      }
+      send({
+        streamId,
+        type: "tool_use",
+        toolUse: {
+          id: builder.id || `call_${index}`,
+          name: builder.name || "unknown",
+          input,
+        },
+      });
+    }
+
+    send({ streamId, type: "done" });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      send({ streamId, type: "done" });
+      return;
+    }
+    send({
+      streamId,
+      type: "error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    openaiStreams.delete(streamId);
+  }
+});
+
+handle("ai:openaiAbort", async (_event, streamId) => {
+  const id = assertString(streamId, "stream id");
+  const controller = openaiStreams.get(id);
+  if (controller) {
+    controller.abort();
+    openaiStreams.delete(id);
+  }
+});
+
+handle("ai:openaiProbe", async (_event, opts) => {
+  const apiKey = assertString(opts?.apiKey, "api key");
+  try {
+    const response = await net.fetch("https://api.openai.com/v1/models?limit=1", {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+      },
+    });
+    if (response.ok) return { ok: true };
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 240);
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: "Invalid API key" };
+    }
+    return {
+      ok: false,
+      error: detail
+        ? `OpenAI HTTP ${response.status}: ${detail}`
+        : `OpenAI HTTP ${response.status}`,
     };
   } catch (err) {
     return {

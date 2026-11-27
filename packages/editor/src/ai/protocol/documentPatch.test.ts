@@ -246,6 +246,169 @@ describe("document_patch", () => {
     assert.ok(mask.id);
   });
 
+  it("accepts custom mask with points and vertex leaf patches", () => {
+    seed([
+      {
+        id: "v1",
+        type: "video",
+        locked: false,
+        hidden: false,
+        clips: [
+          {
+            id: "c1",
+            kind: "video",
+            mediaId: "m1",
+            startMs: 0,
+            durationMs: 3000,
+            inMs: 0,
+            outMs: 3000,
+          },
+        ],
+      },
+    ]);
+    const batch = createMutationBatch();
+    const create = executeDocumentPatch(
+      {
+        ops: [
+          {
+            op: "set",
+            target: "clip",
+            clipId: "c1",
+            path: "masks",
+            value: [
+              {
+                id: "mask_custom_1",
+                type: "custom",
+                invert: false,
+                feather: 0,
+                position: { x: 0, y: 0 },
+                rotationDeg: 0,
+                size: { w: 400, h: 400 },
+                points: [
+                  { x: -0.5, y: -0.5 },
+                  { x: 0.5, y: -0.5 },
+                  { x: 0, y: 0.5 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      batch,
+    );
+    assert.equal(create.ok, true);
+    const mask = batch.tracks[0]!.clips[0]!.masks![0]!;
+    assert.equal(mask.type, "custom");
+    assert.equal(mask.points?.length, 3);
+
+    const leaf = executeDocumentPatch(
+      {
+        ops: [
+          {
+            op: "set",
+            target: "clip",
+            clipId: "c1",
+            path: `masks.${mask.id}.points.0.x`,
+            value: -0.25,
+          },
+        ],
+      },
+      batch,
+    );
+    assert.equal(leaf.ok, true);
+    assert.equal(
+      batch.tracks[0]!.clips[0]!.masks![0]!.points![0]!.x.staticValue,
+      -0.25,
+    );
+  });
+
+  it("patches custom text bubble with points", () => {
+    seed([
+      {
+        id: "text1",
+        type: "text",
+        locked: false,
+        hidden: false,
+        clips: [textClip()],
+      },
+    ]);
+    const batch = createMutationBatch();
+    const result = executeDocumentPatch(
+      {
+        ops: [
+          {
+            op: "set",
+            target: "clip",
+            clipId: "c1",
+            path: "text.bubble",
+            value: {
+              type: "custom",
+              fill: "#ffaa00",
+              stroke: "#000000",
+              strokeWidth: 3,
+              paddingX: 20,
+              paddingY: 12,
+              points: [
+                { x: -0.5, y: -0.4 },
+                { x: 0.5, y: -0.4 },
+                { x: 0.5, y: 0.4 },
+                { x: -0.5, y: 0.4 },
+              ],
+            },
+          },
+        ],
+      },
+      batch,
+    );
+    assert.equal(result.ok, true);
+    const bubble = batch.tracks[0]!.clips[0]!.text?.bubble;
+    assert.equal(bubble?.type, "custom");
+    assert.equal(bubble?.points?.length, 4);
+    assert.equal(bubble?.fill, "#ffaa00");
+  });
+
+  it("patches custom text bubble with AI SVG pathD", () => {
+    seed([
+      {
+        id: "text1",
+        type: "text",
+        locked: false,
+        hidden: false,
+        clips: [textClip()],
+      },
+    ]);
+    const batch = createMutationBatch();
+    const pathD =
+      "M-0.45-0.25 C-0.45-0.45 0.45-0.45 0.45-0.25 L0.45 0.3 L0 0.45 L-0.45 0.3 Z";
+    const result = executeDocumentPatch(
+      {
+        ops: [
+          {
+            op: "set",
+            target: "clip",
+            clipId: "c1",
+            path: "text.bubble",
+            value: {
+              type: "custom",
+              fill: "#fef3c7",
+              stroke: "#92400e",
+              strokeWidth: 3,
+              paddingX: 24,
+              paddingY: 14,
+              pathD,
+            },
+          },
+        ],
+      },
+      batch,
+    );
+    assert.equal(result.ok, true);
+    const bubble = batch.tracks[0]!.clips[0]!.text?.bubble;
+    assert.equal(bubble?.type, "custom");
+    assert.equal(bubble?.pathD, pathD);
+    assert.equal(bubble?.fill, "#fef3c7");
+  });
+
   it("patches project playhead and selection", () => {
     seed([
       {

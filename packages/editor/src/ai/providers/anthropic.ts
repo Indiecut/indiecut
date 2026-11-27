@@ -1,5 +1,12 @@
 import { getPlatform } from "@indiecut/platform";
 
+export type AiTokenUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
+
 export type AnthropicImageBlock = {
   type: "image";
   source: {
@@ -57,6 +64,7 @@ export type StreamMessageResult = {
   toolUses: StreamToolUse[];
   /** Full assistant content blocks for multi-turn tool loops. */
   content: AnthropicContentBlock[];
+  usage?: AiTokenUsage;
 };
 
 export type StreamMessageOpts = {
@@ -84,10 +92,9 @@ export async function streamMessage(
   opts: StreamMessageOpts,
 ): Promise<StreamMessageResult> {
   const bridge = getPlatform();
-  if (bridge?.ai?.streamAnthropic) {
-    return streamViaBridge(opts);
-  }
-  return streamViaFetch(opts);
+  return bridge?.ai?.streamAnthropic
+    ? streamViaBridge(opts)
+    : streamViaFetch(opts);
 }
 
 function buildRequestBody(opts: StreamMessageOpts) {
@@ -118,6 +125,7 @@ async function streamViaBridge(
   const textParts: string[] = [];
   const toolUses: StreamToolUse[] = [];
   const content: AnthropicContentBlock[] = [];
+  let usage: AiTokenUsage | undefined;
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -155,9 +163,12 @@ async function streamViaBridge(
           name: tu.name,
           input: tu.input,
         });
+      } else if (event.type === "usage" && event.usage) {
+        usage = { ...usage, ...event.usage };
       } else if (event.type === "error") {
         finish(new Error(event.error || "Anthropic stream error"));
       } else if (event.type === "done") {
+        if (event.usage) usage = { ...usage, ...event.usage };
         finish();
       }
     });
@@ -187,7 +198,7 @@ async function streamViaBridge(
     content.unshift({ type: "text", text });
   }
 
-  return { text, toolUses, content };
+  return { text, toolUses, content, usage };
 }
 
 async function streamViaFetch(
@@ -223,6 +234,24 @@ async function streamViaFetch(
   return consumeAnthropicSse(response.body, opts.onDelta, opts.signal);
 }
 
+function mergeUsage(
+  into: AiTokenUsage | undefined,
+  raw: unknown,
+): AiTokenUsage | undefined {
+  if (!raw || typeof raw !== "object") return into;
+  const u = raw as Record<string, unknown>;
+  const next: AiTokenUsage = { ...(into ?? {}) };
+  if (typeof u.input_tokens === "number") next.input_tokens = u.input_tokens;
+  if (typeof u.output_tokens === "number") next.output_tokens = u.output_tokens;
+  if (typeof u.cache_creation_input_tokens === "number") {
+    next.cache_creation_input_tokens = u.cache_creation_input_tokens;
+  }
+  if (typeof u.cache_read_input_tokens === "number") {
+    next.cache_read_input_tokens = u.cache_read_input_tokens;
+  }
+  return next;
+}
+
 /** Shared SSE consumer for fetch path (and mirror of Electron main parsing). */
 export async function consumeAnthropicSse(
   body: ReadableStream<Uint8Array>,
@@ -235,6 +264,7 @@ export async function consumeAnthropicSse(
   const textParts: string[] = [];
   const toolBuilders = new Map<number, SseToolBuilder>();
   const toolOrder: number[] = [];
+  let usage: AiTokenUsage | undefined;
 
   const abortReader = () => {
     void reader.cancel().catch(() => undefined);
@@ -257,13 +287,14 @@ export async function consumeAnthropicSse(
       if (!data || data === "[DONE]") continue;
       try {
         const parsed = JSON.parse(data) as Record<string, unknown>;
-        applySseEvent(parsed, {
+        usage = applySseEvent(parsed, {
           onText: (t) => {
             textParts.push(t);
             onDelta?.(t);
           },
           toolBuilders,
           toolOrder,
+          usage,
         });
         if (parsed.type === "error") {
           const errObj = parsed.error as { message?: string } | undefined;
@@ -307,7 +338,7 @@ export async function consumeAnthropicSse(
     });
   }
 
-  return { text, toolUses, content };
+  return { text, toolUses, content, usage };
 }
 
 export function applySseEvent(
@@ -316,8 +347,22 @@ export function applySseEvent(
     onText: (text: string) => void;
     toolBuilders: Map<number, SseToolBuilder>;
     toolOrder: number[];
+    usage?: AiTokenUsage;
   },
-): void {
+): AiTokenUsage | undefined {
+  let usage = state.usage;
+
+  if (parsed.type === "message_start") {
+    const message = parsed.message as Record<string, unknown> | undefined;
+    usage = mergeUsage(usage, message?.usage);
+    return usage;
+  }
+
+  if (parsed.type === "message_delta") {
+    usage = mergeUsage(usage, parsed.usage);
+    return usage;
+  }
+
   if (parsed.type === "content_block_start") {
     const block = parsed.content_block as Record<string, unknown> | undefined;
     const index = typeof parsed.index === "number" ? parsed.index : -1;
@@ -331,12 +376,12 @@ export function applySseEvent(
       state.toolBuilders.set(index, builder);
       state.toolOrder.push(index);
     }
-    return;
+    return usage;
   }
 
   if (parsed.type === "content_block_delta") {
     const delta = parsed.delta as Record<string, unknown> | undefined;
-    if (!delta) return;
+    if (!delta) return usage;
     if (delta.type === "text_delta" && typeof delta.text === "string") {
       state.onText(delta.text);
     } else if (
@@ -348,4 +393,5 @@ export function applySseEvent(
       if (builder) builder.inputJson += delta.partial_json;
     }
   }
+  return usage;
 }

@@ -87,7 +87,13 @@ export function layoutTextUnits(
     if (!rich) return null;
     const units: LaidOutTextUnit[] = [];
     let index = 0;
-    const inset = contentInsets(rich.box);
+    const bubbleContent = rich.box.bubble
+      ? {
+          w: rich.maxW + rich.box.bubble.paddingX * 2,
+          h: rich.textH + rich.box.bubble.paddingY * 2 + rich.box.bubble.tailH,
+        }
+      : undefined;
+    const inset = contentInsets(rich.box, bubbleContent);
 
     if (granularity === "line") {
       for (const line of rich.lines) {
@@ -211,7 +217,21 @@ export function layoutTextUnits(
   }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
   const strokePad = t.strokeWidth * 2;
-  const inset = contentInsets(t);
+  let maxContentW = 0;
+  for (const line of lines) {
+    maxContentW = Math.max(
+      maxContentW,
+      measureLineWidth(ctx, line, t.letterSpacing),
+    );
+  }
+  const textBlockH = lines.length * lineHeight;
+  const bubbleContent = t.bubble
+    ? {
+        w: maxContentW + t.bubble.paddingX * 2,
+        h: textBlockH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      }
+    : undefined;
+  const inset = contentInsets(t, bubbleContent);
   const originY = inset.y;
 
   if (granularity === "whole") {

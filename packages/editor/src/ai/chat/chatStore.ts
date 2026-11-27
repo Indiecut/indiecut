@@ -28,10 +28,11 @@ import {
   type ChatUserImage,
 } from "../persistence/chatTranscript";
 import {
+  chatProviderForModelId,
   getAiSecretsCached,
-  getClaudeModelId,
-  hasAnthropicKey,
-  type ClaudeModelId,
+  getChatModelId,
+  hasKeyForChatModel,
+  selectChatModel,
 } from "../secrets/aiSecrets";
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -44,7 +45,8 @@ type ChatStoreState = {
   draft: string;
   /** Pending downscaled reference images for the next send. */
   draftImages: UserReferenceAttachment[];
-  modelId: ClaudeModelId;
+  /** Active chat model id (Claude or OpenAI depending on provider). */
+  modelId: string;
   visionMode: VisionMode;
   /** Agent (default) can edit; Ask is suggestions only. */
   chatMode: ChatInteractionMode;
@@ -54,7 +56,10 @@ type ChatStoreState = {
   addDraftImages: (files: FileList | File[]) => Promise<void>;
   removeDraftImage: (id: string) => void;
   clearDraftImages: () => void;
-  setModelId: (id: ClaudeModelId) => void;
+  /** Local model id only (e.g. sync from secrets). */
+  setModelId: (id: string) => void;
+  /** Picker selection — switches provider + persists default model. */
+  selectModel: (id: string) => Promise<void>;
   setVisionMode: (mode: VisionMode) => void;
   setChatMode: (mode: ChatInteractionMode) => void;
   loadForProject: (projectPath: string | null) => Promise<void>;
@@ -113,7 +118,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   error: null,
   draft: "",
   draftImages: [],
-  modelId: getClaudeModelId(),
+  modelId: getChatModelId(),
   visionMode: "auto",
   chatMode: "agent",
   abortController: null,
@@ -164,6 +169,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
   setModelId: (id) => set({ modelId: id }),
 
+  selectModel: async (id) => {
+    set({ modelId: id });
+    try {
+      await selectChatModel(id);
+    } catch (err) {
+      console.warn("Failed to persist chat model selection", err);
+    }
+  },
+
   setVisionMode: (mode) => set({ visionMode: mode }),
 
   setChatMode: (mode) => set({ chatMode: mode }),
@@ -187,7 +201,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         draft: "",
         draftImages: [],
         abortController: null,
-        modelId: getClaudeModelId(),
+        modelId: getChatModelId(),
       });
       return;
     }
@@ -200,7 +214,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       draft: "",
       draftImages: [],
       abortController: null,
-      modelId: getClaudeModelId(),
+      modelId: getChatModelId(),
     });
   },
 
@@ -296,11 +310,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const msg = state.messages.find((m) => m.id === messageId);
     const plan = msg?.pendingPlan;
     if (!plan || plan.cancelledAt) return;
-    if (!hasAnthropicKey()) {
-      set({ error: "Add an Anthropic API key in AI settings to chat." });
+    if (!hasKeyForChatModel(state.modelId)) {
+      const provider = chatProviderForModelId(state.modelId);
+      set({
+        error:
+          provider === "openai"
+            ? "Add an OpenAI API key in AI settings to continue."
+            : "Add an Anthropic API key in AI settings to continue.",
+      });
       return;
     }
-    const apiKey = getAiSecretsCached().anthropicKey;
+    const secrets = getAiSecretsCached();
+    const apiKey =
+      chatProviderForModelId(state.modelId) === "openai"
+        ? secrets.openaiKey
+        : secrets.anthropicKey;
     if (!apiKey) return;
 
     const controller = new AbortController();
@@ -391,11 +415,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const text = state.draft.trim();
     const draftImages = state.draftImages.slice(0, MAX_USER_REFERENCE_IMAGES);
     if ((!text && draftImages.length === 0) || state.streaming) return;
-    if (!hasAnthropicKey()) {
-      set({ error: "Add an Anthropic API key in AI settings to chat." });
+    if (!hasKeyForChatModel(state.modelId)) {
+      const provider = chatProviderForModelId(state.modelId);
+      set({
+        error:
+          provider === "openai"
+            ? "Add an OpenAI API key in AI settings to continue."
+            : "Add an Anthropic API key in AI settings to continue.",
+      });
       return;
     }
-    const apiKey = getAiSecretsCached().anthropicKey;
+    const secrets = getAiSecretsCached();
+    const apiKey =
+      chatProviderForModelId(state.modelId) === "openai"
+        ? secrets.openaiKey
+        : secrets.anthropicKey;
     if (!apiKey) return;
 
     // Drop greyed-out post-restore turns — they can't stay in history.

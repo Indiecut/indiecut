@@ -1,4 +1,5 @@
 import { defaultAnimatableTransform } from "../../engine/animatable";
+import { presetPoints } from "../../geometry/vectorShape";
 import {
   findClipInTracks,
   isFreelyResizableClip,
@@ -15,7 +16,9 @@ import {
 } from "../../media/addTextToTimeline";
 import { placeImageOnTracks } from "../../media/placeImageOnTracks";
 import type { Clip, TextProps, Track } from "../../project/types";
+import { SHAPE_STICKER_ID } from "../../project/types";
 import { findSticker, loadStickerManifest } from "../../stickers/manifest";
+import { defaultShapeStickerStyle } from "../../stickers/shapeStickerSvg";
 import { frameDurationMs, getEditorStore } from "../../store/editorStore";
 import {
   normalizeTextProps,
@@ -560,9 +563,46 @@ async function executeInsertSticker(
     });
   }
 
+  let stickerStyle: Clip["stickerStyle"] | undefined;
+  const isShape =
+    stickerId === SHAPE_STICKER_ID || stickerId.startsWith(`${SHAPE_STICKER_ID}:`);
+  if (isShape) {
+    const preset = stickerId.includes(":")
+      ? stickerId.slice(SHAPE_STICKER_ID.length + 1)
+      : "star";
+    stickerStyle =
+      preset === "custom"
+        ? {
+            ...defaultShapeStickerStyle("star"),
+            shapePreset: "custom",
+          }
+        : defaultShapeStickerStyle(
+            preset as Parameters<typeof defaultShapeStickerStyle>[0],
+          );
+    if (
+      input.stickerStyle &&
+      typeof input.stickerStyle === "object" &&
+      !Array.isArray(input.stickerStyle)
+    ) {
+      stickerStyle = {
+        ...stickerStyle,
+        ...(input.stickerStyle as Clip["stickerStyle"]),
+      };
+    }
+    if (stickerStyle?.shapePreset === "custom" && !stickerStyle.points) {
+      stickerStyle.points = presetPoints("star");
+    }
+  } else if (
+    input.stickerStyle &&
+    typeof input.stickerStyle === "object" &&
+    !Array.isArray(input.stickerStyle)
+  ) {
+    stickerStyle = input.stickerStyle as Clip["stickerStyle"];
+  }
+
   const placed = placeStickerOnTracks({
     tracks: batch.tracks,
-    entry,
+    entry: isShape ? { ...entry, id: SHAPE_STICKER_ID } : entry,
     targetTrackId:
       typeof input.trackId === "string" ? input.trackId : undefined,
     startMs: exactStart ? (input.startMs as number) : undefined,
@@ -570,6 +610,7 @@ async function executeInsertSticker(
       typeof input.durationMs === "number" ? input.durationMs : undefined,
     exactStart,
     transform,
+    stickerStyle,
     playheadMs: store.project.playheadMs,
     magnetEnabled: store.magnetEnabled,
     pxPerSec: store.timelinePxPerSec,

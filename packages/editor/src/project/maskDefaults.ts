@@ -2,7 +2,13 @@ import {
   coerceAnimatableNumber,
   staticAnimatable,
 } from "../engine/animatable";
+import {
+  ensureMinPoints,
+  presetPoints,
+  type VectorShapePoint,
+} from "../geometry/vectorShape";
 import type {
+  AnimatableVectorPoint,
   ClipMask,
   MaskBoolean,
   MaskTextProps,
@@ -17,7 +23,21 @@ const MASK_TYPES = new Set<MaskType>([
   "stars",
   "heart",
   "text",
+  "custom",
 ]);
+
+export function staticShapePoints(
+  points: VectorShapePoint[],
+): AnimatableVectorPoint[] {
+  return ensureMinPoints(points).map((p) => ({
+    x: staticAnimatable(p.x),
+    y: staticAnimatable(p.y),
+  }));
+}
+
+export function defaultCustomMaskPoints(): AnimatableVectorPoint[] {
+  return staticShapePoints(presetPoints("star"));
+}
 
 const MASK_BOOLEANS = new Set<MaskBoolean>(["add", "subtract", "intersect"]);
 
@@ -123,6 +143,17 @@ export function createDefaultMask(
         text,
       };
     }
+    case "custom":
+      return {
+        ...base,
+        name: maskDisplayName({ ...base, type: "custom" }, index),
+        size: {
+          w: staticAnimatable(size.w),
+          h: staticAnimatable(size.h),
+        },
+        expand: staticAnimatable(0),
+        points: defaultCustomMaskPoints(),
+      };
     default:
       return {
         ...base,
@@ -301,7 +332,30 @@ export function normalizeClipMaskInput(
     };
   }
 
+  if (type === "custom") {
+    mask.points = normalizeAnimatablePoints(
+      raw.points,
+      base.points ?? defaultCustomMaskPoints(),
+    );
+  }
+
   return mask;
+}
+
+function normalizeAnimatablePoints(
+  raw: unknown,
+  fallback: AnimatableVectorPoint[],
+): AnimatableVectorPoint[] {
+  if (!Array.isArray(raw) || raw.length < 3) return fallback;
+  const out: AnimatableVectorPoint[] = [];
+  for (const item of raw) {
+    if (!isPlainObject(item)) continue;
+    out.push({
+      x: coerceAnimatableNumber(item.x, 0),
+      y: coerceAnimatableNumber(item.y, 0),
+    });
+  }
+  return out.length >= 3 ? out : fallback;
 }
 
 /** Normalize an AI / external masks array; returns undefined when nothing valid. */

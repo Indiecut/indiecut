@@ -43,15 +43,35 @@ function normalizeAiSecrets(raw: unknown): AiSecretsV1 | null {
     o.claudeModelId === "claude-sonnet-5-5"
       ? o.claudeModelId
       : "claude-sonnet-5-5";
+  const openaiModelId =
+    o.openaiModelId === "gpt-4o" ||
+    o.openaiModelId === "gpt-4o-mini" ||
+    o.openaiModelId === "gpt-6-luna-max"
+      ? o.openaiModelId
+      : "gpt-4o";
+  const chatProviderId =
+    o.chatProviderId === "openai" || o.chatProviderId === "anthropic"
+      ? o.chatProviderId
+      : "anthropic";
+  const elevenLabsSfxOk =
+    o.elevenLabsSfxOk === true
+      ? true
+      : o.elevenLabsSfxOk === false
+        ? false
+        : undefined;
   return {
     version: 1,
     anthropicKey: typeof o.anthropicKey === "string" ? o.anthropicKey : undefined,
+    openaiKey: typeof o.openaiKey === "string" ? o.openaiKey : undefined,
     geminiKey: typeof o.geminiKey === "string" ? o.geminiKey : undefined,
     elevenLabsKey:
       typeof o.elevenLabsKey === "string" ? o.elevenLabsKey : undefined,
     elevenLabsVoiceId:
       typeof o.elevenLabsVoiceId === "string" ? o.elevenLabsVoiceId : undefined,
+    elevenLabsSfxOk,
+    chatProviderId,
     claudeModelId,
+    openaiModelId,
   };
 }
 

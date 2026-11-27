@@ -9,6 +9,7 @@ import {
   DEFAULT_TEXT_FONT_WEIGHT,
   RETRO_3D_DEPTH,
   bubbleRectForText,
+  bubbleSpikePad,
   contentInsets,
   parseLinearGradientCss,
   paintBubble,
@@ -350,6 +351,13 @@ export function measureRichTextSize(
   const bubblePadH = t.bubble
     ? t.bubble.paddingY * 2 + t.bubble.strokeWidth + t.bubble.tailH
     : 0;
+  const spike = t.bubble
+    ? bubbleSpikePad(
+        t.bubble,
+        layout.maxW + t.bubble.paddingX * 2,
+        layout.textH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      )
+    : { padX: 0, padY: 0 };
   const underlinePad = layout.lines.some((l) =>
     l.glyphs.some(
       (g) =>
@@ -363,7 +371,12 @@ export function measureRichTextSize(
   const width = Math.max(
     2,
     Math.ceil(
-      layout.maxW + t.pad * 2 + strokePadResolved + t.shadowPad + bubblePadW,
+      layout.maxW +
+        t.pad * 2 +
+        strokePadResolved +
+        t.shadowPad +
+        bubblePadW +
+        spike.padX * 2,
     ),
   );
   const height = Math.max(
@@ -374,7 +387,8 @@ export function measureRichTextSize(
         strokePadResolved +
         t.shadowPad +
         underlinePad +
-        bubblePadH,
+        bubblePadH +
+        spike.padY * 2,
     ),
   );
   return { width, height };
@@ -416,7 +430,13 @@ export function paintRichTextLayout(
   fullW: number,
 ): void {
   const t = layout.box;
-  const inset = contentInsets(t);
+  const bubbleContent = t.bubble
+    ? {
+        w: layout.maxW + t.bubble.paddingX * 2,
+        h: layout.textH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      }
+    : undefined;
+  const inset = contentInsets(t, bubbleContent);
 
   if (t.bubble) {
     const rect = bubbleRectForText(fullW, layout.maxW, layout.textH, t);

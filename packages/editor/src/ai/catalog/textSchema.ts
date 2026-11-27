@@ -34,6 +34,52 @@ export const textRunSchema = z
   })
   .strict();
 
+const vectorPointSchema = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+  })
+  .strict();
+
+/** Text bubble / shape chrome behind glyphs. */
+export const textBubbleSchema = z
+  .object({
+    type: z.enum([
+      "none",
+      "speech-round",
+      "speech-comic",
+      "thought-cloud",
+      "comic-burst",
+      "pill",
+      "neon-frame",
+      "torn-paper",
+      "typing-box",
+      "promo-badge",
+      "ribbon",
+      "arrow-tag",
+      "hexagon",
+      "ticket",
+      "rounded-rect",
+      "star-badge",
+      "custom",
+    ]),
+    fill: z.string().optional(),
+    stroke: z.string().optional(),
+    strokeWidth: z.number().optional(),
+    paddingX: z.number().optional(),
+    paddingY: z.number().optional(),
+    accentColor: z.string().optional(),
+    opacity: z.number().optional(),
+    /** Closed polygon in ±0.5 space when type is custom (fallback). */
+    points: z.array(vectorPointSchema).min(3).optional(),
+    /**
+     * AI-authored SVG path `d` in ±0.5 center-origin space (preferred for custom).
+     * Static chrome only — no user upload, no keyframed morph.
+     */
+    pathD: z.string().min(2).max(8000).optional(),
+  })
+  .strict();
+
 /** Box-level + rich-run text props the agent may patch or insert. */
 export const textPropsSchema = z
   .object({
@@ -65,5 +111,6 @@ export const textPropsSchema = z
     shadowOffsetX: z.number().optional(),
     shadowOffsetY: z.number().optional(),
     retro3DColor: z.string().nullable().optional(),
+    bubble: textBubbleSchema.optional(),
   })
   .strict();

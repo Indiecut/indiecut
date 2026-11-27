@@ -1,3 +1,4 @@
+import { pointsFingerprint } from "../geometry/vectorShape";
 import type { ResolvedClipMask } from "../project/types";
 
 /** Stable fingerprint for preview skip-cache / stencil invalidation. */
@@ -14,6 +15,7 @@ export function maskFingerprint(
       const text = m.text
         ? `${m.text.content}|${m.text.fontFamily}|${m.text.fontSize}|${m.text.align ?? "c"}|${m.text.letterSpacing ?? 0}|${m.text.lineHeight ?? 1}`
         : "";
+      const points = pointsFingerprint(m.points);
       return [
         m.id,
         m.type,
@@ -28,6 +30,7 @@ export function maskFingerprint(
         Number(m.cornerRadius ?? 0).toFixed(1),
         Number(m.stripGap ?? 0).toFixed(1),
         text,
+        points,
       ].join(":");
     })
     .join("|");

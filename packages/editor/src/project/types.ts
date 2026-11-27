@@ -225,6 +225,27 @@ export type TextAnimationParams = {
   granularity?: TextAnimationGranularity;
 };
 
+/** Closed-polygon vertex in local center-origin ±0.5 space. */
+export type VectorShapePoint = { x: number; y: number };
+
+/** Animatable vertex for custom mask morphing. */
+export type AnimatableVectorPoint = {
+  x: AnimatableProperty<number>;
+  y: AnimatableProperty<number>;
+};
+
+export type VectorShapePresetId =
+  | "circle"
+  | "rectangle"
+  | "roundedRect"
+  | "triangle"
+  | "diamond"
+  | "hexagon"
+  | "star"
+  | "heart"
+  | "arrow"
+  | "custom";
+
 export type TextBubbleProps = {
   type:
     | "none"
@@ -242,7 +263,8 @@ export type TextBubbleProps = {
     | "hexagon"
     | "ticket"
     | "rounded-rect"
-    | "star-badge";
+    | "star-badge"
+    | "custom";
   fill: string;
   stroke: string;
   strokeWidth: number;
@@ -251,6 +273,17 @@ export type TextBubbleProps = {
   accentColor?: string;
   /** Shape chrome opacity 0–1 (fill + stroke). Default 1. */
   opacity?: number;
+  /**
+   * Closed polygon in local ±0.5 space (center-origin). Used when type is
+   * `"custom"`; mapped into the padded text bubble rect at paint time.
+   * Fallback when `pathD` is absent.
+   */
+  points?: VectorShapePoint[];
+  /**
+   * AI-authored SVG path `d` in the same ±0.5 center-origin space as `points`.
+   * Preferred for custom bubbles (static chrome — not keyframed). No user upload.
+   */
+  pathD?: string;
 };
 
 /** Per-run / per-range typography override (merged onto box-level TextProps defaults). */
@@ -457,7 +490,8 @@ export type MaskType =
   | "rectangle"
   | "stars"
   | "heart"
-  | "text";
+  | "text"
+  | "custom";
 
 export type MaskBoolean = "add" | "subtract" | "intersect";
 
@@ -497,6 +531,11 @@ export type ClipMask = {
   cornerRadius?: AnimatableProperty<number>;
   stripGap?: AnimatableProperty<number>;
   text?: MaskTextProps;
+  /**
+   * Custom closed polygon in local ±0.5 space (center-origin).
+   * Scaled by `size` at evaluate/render. Point count is fixed while keyframed.
+   */
+  points?: AnimatableVectorPoint[];
 };
 
 /** Flat mask after keyframe evaluate (compositor / overlay). */
@@ -514,6 +553,7 @@ export type ResolvedClipMask = {
   cornerRadius?: number;
   stripGap?: number;
   text?: MaskTextProps;
+  points?: VectorShapePoint[];
 };
 
 export type MediaImportStatus = "processing" | "ready" | "error";
@@ -541,12 +581,26 @@ export type MediaAssetRef = {
   favorite?: boolean;
 };
 
-/** Kinetic sticker look — palette / backing / stroke (no text). */
+/**
+ * Kinetic sticker look — palette / backing / stroke (no text).
+ * When `stickerId === "shape"`, also carries parametric / custom polygon.
+ */
 export type StickerStyleParams = {
   paletteKey?: "vibrant" | "cyber" | "cinema" | "pastel" | "mono";
   backingMode?: "diecut" | "flat" | "glow";
   strokeScale?: number;
+  /** Shape sticker preset (`stickerId === "shape"`). */
+  shapePreset?: VectorShapePresetId;
+  /** Closed polygon in ±0.5 space when shapePreset is custom (or resolved). */
+  points?: VectorShapePoint[];
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  opacity?: number;
 };
+
+/** Reserved sticker id for parametric / custom vector shapes. */
+export const SHAPE_STICKER_ID = "shape";
 
 export type Clip = {
   id: string;

@@ -6,9 +6,11 @@ import { capturePreviewComposite } from "../../preview/previewWorkerClient";
 import { getEditorStore } from "../../store/editorStore";
 import type { ToolResult } from "./types";
 
-const DEFAULT_MAX_WIDTH = 1280;
-const DEFAULT_QUALITY = 0.85;
-const MAX_WIDTH_CAP = 1920;
+/** Vision plates — keep small; Claude bills by image tiles/dimensions. */
+const DEFAULT_MAX_WIDTH = 640;
+const DEFAULT_QUALITY = 0.65;
+/** Hard cap even if the model asks for more. */
+const MAX_WIDTH_CAP = 1024;
 
 export function bufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);

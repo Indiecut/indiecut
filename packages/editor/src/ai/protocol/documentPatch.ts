@@ -96,6 +96,8 @@ function isAllowedClipPath(path: string): boolean {
     return true;
   }
   if (path === "muteAudio" || path === "masks") return true;
+  // masks.<id>.<leaf> including masks.<id>.points.<i>.x|y
+  if (path.startsWith("masks.")) return true;
   if (path === "caption.cues") return true;
   return CLIP_SET_PATH_PREFIXES.some(
     (p) => p.endsWith(".") && path.startsWith(p),
@@ -401,7 +403,7 @@ function setClipPath(
       return {
         ok: false,
         summary:
-          "masks must be an array of mask objects with type (circle|rectangle|split|filmstrip|stars|heart|text). Numeric leaves may be bare numbers.",
+          "masks must be an array of mask objects with type (circle|rectangle|split|filmstrip|stars|heart|text|custom). For custom, include points: [{x,y},...] in ±0.5 space (min 3). Numeric leaves may be bare numbers; keyframe vertices via masks.<id>.points.<i>.x|y.",
         data: { error: "invalid_masks" },
       };
     }

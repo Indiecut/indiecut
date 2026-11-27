@@ -2,6 +2,7 @@
  * IndieCut kinetic sticker pack — original text-free SVGs generated at runtime.
  */
 
+import { SHAPE_STICKER_ID } from "../project/types";
 import {
   filterKineticStickers,
   getKineticSticker,
@@ -10,6 +11,10 @@ import {
   type KineticCategoryId,
   type KineticStickerDef,
 } from "./kinetic";
+import {
+  defaultShapeStickerStyle,
+  SHAPE_STICKER_PRESETS,
+} from "./shapeStickerSvg";
 
 export type StickerManifestEntry = {
   id: string;
@@ -36,9 +41,30 @@ export const STICKER_GROUP_ORDER = KINETIC_CATEGORIES.map((c) => c.id);
 
 export type StickerGroupId = KineticCategoryId | string;
 
-export const STICKER_GROUP_LABEL: Record<string, string> = Object.fromEntries(
-  KINETIC_CATEGORIES.map((c) => [c.id, c.name]),
-);
+export const STICKER_GROUP_LABEL: Record<string, string> = {
+  shapes: "Shapes",
+  ...Object.fromEntries(KINETIC_CATEGORIES.map((c) => [c.id, c.name])),
+};
+
+export const STICKER_GROUP_ORDER_WITH_SHAPES = [
+  "shapes",
+  ...STICKER_GROUP_ORDER,
+];
+
+export function shapeStickerManifestEntries(): StickerManifestEntry[] {
+  return SHAPE_STICKER_PRESETS.map((p, i) => ({
+    id: `${SHAPE_STICKER_ID}:${p.id}`,
+    name: p.label,
+    file: `shape/${p.id}.svg`,
+    group: "shapes",
+    tags: ["shape", "vector", p.id],
+    defaultDurationMs: 3000,
+    template: p.id,
+    colorRole: "primary",
+    slug: `shape-${p.id}`,
+    catIndex: i,
+  }));
+}
 
 /** Logical sticker size in composition pixels (kinetic viewBox 256 → layout 256). */
 export const STICKER_LOGICAL_SIZE = 256;
@@ -69,11 +95,15 @@ function defToEntry(def: KineticStickerDef): StickerManifestEntry {
 }
 
 function buildManifest(): StickerManifest {
-  const stickers = KINETIC_STICKERS.map(defToEntry);
+  const stickers = [
+    ...shapeStickerManifestEntries(),
+    ...KINETIC_STICKERS.map(defToEntry),
+  ];
   for (const s of stickers) nameById.set(s.id, s.name);
+  nameById.set(SHAPE_STICKER_ID, "Shape");
   return {
-    version: 3,
-    source: "IndieCut Kinetic (original, text-free)",
+    version: 4,
+    source: "IndieCut Kinetic + Shapes (original, text-free)",
     license: "Original IndieCut assets — see stickers/LICENSE.md",
     stickers,
   };
@@ -95,6 +125,25 @@ export function findSticker(
   manifest: StickerManifest,
   stickerId: string,
 ): StickerManifestEntry | undefined {
+  if (stickerId === SHAPE_STICKER_ID || stickerId.startsWith(`${SHAPE_STICKER_ID}:`)) {
+    const preset = stickerId.includes(":")
+      ? stickerId.slice(SHAPE_STICKER_ID.length + 1)
+      : "star";
+    return (
+      manifest.stickers.find((s) => s.id === stickerId) ?? {
+        id: SHAPE_STICKER_ID,
+        name: "Shape",
+        file: `shape/${preset}.svg`,
+        group: "shapes",
+        tags: ["shape", "vector", preset],
+        defaultDurationMs: 3000,
+        template: preset,
+        colorRole: "primary",
+        slug: `shape-${preset}`,
+        catIndex: -1,
+      }
+    );
+  }
   return (
     manifest.stickers.find((s) => s.id === stickerId) ??
     (() => {
@@ -112,7 +161,7 @@ export function stickerGroupsFromManifest(
     counts.set(s.group, (counts.get(s.group) ?? 0) + 1);
   }
   const ordered: { id: string; label: string; count: number }[] = [];
-  for (const id of STICKER_GROUP_ORDER) {
+  for (const id of STICKER_GROUP_ORDER_WITH_SHAPES) {
     const count = counts.get(id);
     if (!count) continue;
     ordered.push({
@@ -141,16 +190,38 @@ export function filterStickers(
     query?: string;
   },
 ): StickerManifestEntry[] {
+  if (opts.group === "shapes") {
+    const q = (opts.query ?? "").trim().toLowerCase();
+    return stickers.filter((s) => {
+      if (s.group !== "shapes") return false;
+      if (!q) return true;
+      return (
+        s.name.toLowerCase().includes(q) ||
+        s.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    });
+  }
   const filtered = filterKineticStickers({
     category: opts.group ?? undefined,
     query: opts.query,
   });
   const allow = new Set(filtered.map((d) => d.id));
   return stickers.filter((s) => {
+    if (s.group === "shapes") {
+      if (opts.group) return false;
+      const q = (opts.query ?? "").trim().toLowerCase();
+      if (!q) return false;
+      return (
+        s.name.toLowerCase().includes(q) ||
+        s.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    }
     if (opts.group && s.group !== opts.group) return false;
     return allow.has(s.id);
   });
 }
+
+export { defaultShapeStickerStyle };
 
 /** Resolve kinetic def for SVG generation. */
 export function stickerDefForId(

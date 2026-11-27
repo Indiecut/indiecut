@@ -135,7 +135,16 @@ const TIMELINE_EDIT_SCHEMA = {
       description:
         "Rich text spans for insertText: { text, style? } with per-span font/color/gradient/highlight/stroke",
     },
-    stickerId: { type: "string" },
+    stickerId: {
+      type: "string",
+      description:
+        "Kinetic sticker id, or shape / shape:<preset> for vector shapes",
+    },
+    stickerStyle: {
+      type: "object",
+      description:
+        "Optional style; for shape stickers: shapePreset, points, fill, stroke, strokeWidth",
+    },
     mediaId: { type: "string" },
     preset: { type: "string" },
     fontFamily: { type: "string" },
@@ -163,8 +172,15 @@ const STAGE_CAPTURE_SCHEMA = {
   properties: {
     mode: { type: "string", enum: ["composite", "media"] },
     clipId: { type: "string" },
-    maxWidth: { type: "number" },
-    quality: { type: "number" },
+    maxWidth: {
+      type: "number",
+      description:
+        "Long-edge px. Default 640, max 1024. Prefer omit — host uses a cheap plate.",
+    },
+    quality: {
+      type: "number",
+      description: "JPEG quality 0.1–1. Default 0.65. Prefer omit.",
+    },
   },
   additionalProperties: false,
 };
@@ -287,7 +303,7 @@ function buildProtocolTools(): RegisteredTool[] {
     {
       name: "stage_capture",
       description:
-        "Capture preview composite or source media plate for vision.",
+        "Capture a cheap preview composite or source plate for vision (default ≤640px JPEG). Prefer inspect/context first; omit maxWidth/quality unless sharper detail is required (cap 1024).",
       input_schema: STAGE_CAPTURE_SCHEMA,
       mutates: false,
       handler: (input, ctx) => executeStageCapture(input, ctx.signal),

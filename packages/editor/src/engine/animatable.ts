@@ -19,7 +19,7 @@ import type {
 } from "../project/types";
 import { DEFAULT_TRANSFORM3D_PERSPECTIVE } from "../project/types";
 
-export type MaskAnimatableLeaf =
+export type MaskAnimatableScalarLeaf =
   | "feather"
   | "expand"
   | "position.x"
@@ -29,6 +29,12 @@ export type MaskAnimatableLeaf =
   | "size.h"
   | "cornerRadius"
   | "stripGap";
+
+/** Scalar leaves plus custom-polygon vertex leaves (`points.<i>.x|y`). */
+export type MaskAnimatableLeaf =
+  | MaskAnimatableScalarLeaf
+  | `points.${number}.x`
+  | `points.${number}.y`;
 
 export type AnimatablePath =
   | "transform.x"
@@ -51,7 +57,7 @@ export type AnimatablePath =
   | "effect.intensity"
   | `masks.${string}.${MaskAnimatableLeaf}`;
 
-const MASK_LEAVES = new Set<MaskAnimatableLeaf>([
+const MASK_SCALAR_LEAVES = new Set<MaskAnimatableScalarLeaf>([
   "feather",
   "expand",
   "position.x",
@@ -63,8 +69,34 @@ const MASK_LEAVES = new Set<MaskAnimatableLeaf>([
   "stripGap",
 ]);
 
+const MASK_POINT_LEAF_RE = /^points\.(\d+)\.(x|y)$/;
+
+export function isMaskPointLeaf(
+  leaf: string,
+): leaf is `points.${number}.x` | `points.${number}.y` {
+  return MASK_POINT_LEAF_RE.test(leaf);
+}
+
+export function parseMaskPointLeaf(
+  leaf: string,
+): { index: number; axis: "x" | "y" } | null {
+  const m = MASK_POINT_LEAF_RE.exec(leaf);
+  if (!m) return null;
+  return { index: Number(m[1]), axis: m[2] as "x" | "y" };
+}
+
+export function maskPointLeaf(
+  index: number,
+  axis: "x" | "y",
+): `points.${number}.x` | `points.${number}.y` {
+  return `points.${index}.${axis}`;
+}
+
 export type ParsedAnimatablePath =
-  | { kind: "simple"; path: Exclude<AnimatablePath, `masks.${string}.${MaskAnimatableLeaf}`> }
+  | {
+      kind: "simple";
+      path: Exclude<AnimatablePath, `masks.${string}.${MaskAnimatableLeaf}`>;
+    }
   | { kind: "mask"; maskId: string; leaf: MaskAnimatableLeaf };
 
 export function parseAnimatablePath(path: AnimatablePath): ParsedAnimatablePath {
@@ -75,8 +107,11 @@ export function parseAnimatablePath(path: AnimatablePath): ParsedAnimatablePath 
       return { kind: "simple", path: "opacity" };
     }
     const maskId = rest.slice(0, dot);
-    const leaf = rest.slice(dot + 1) as MaskAnimatableLeaf;
-    if (MASK_LEAVES.has(leaf)) {
+    const leaf = rest.slice(dot + 1);
+    if (MASK_SCALAR_LEAVES.has(leaf as MaskAnimatableScalarLeaf)) {
+      return { kind: "mask", maskId, leaf: leaf as MaskAnimatableScalarLeaf };
+    }
+    if (isMaskPointLeaf(leaf)) {
       return { kind: "mask", maskId, leaf };
     }
   }
@@ -93,7 +128,7 @@ export function maskAnimatablePath(
   return `masks.${maskId}.${leaf}`;
 }
 
-const MASK_LEAF_LABELS: Record<MaskAnimatableLeaf, string> = {
+const MASK_SCALAR_LABELS: Record<MaskAnimatableScalarLeaf, string> = {
   feather: "Feather",
   expand: "Expand",
   "position.x": "Position X",
@@ -104,6 +139,17 @@ const MASK_LEAF_LABELS: Record<MaskAnimatableLeaf, string> = {
   cornerRadius: "Corner Radius",
   stripGap: "Strip Gap",
 };
+
+function maskLeafLabel(leaf: MaskAnimatableLeaf): string {
+  if (MASK_SCALAR_LEAVES.has(leaf as MaskAnimatableScalarLeaf)) {
+    return MASK_SCALAR_LABELS[leaf as MaskAnimatableScalarLeaf];
+  }
+  const parsed = parseMaskPointLeaf(leaf);
+  if (parsed) {
+    return `Point ${parsed.index + 1} ${parsed.axis.toUpperCase()}`;
+  }
+  return leaf;
+}
 
 const SIMPLE_PATH_LABELS: Record<string, string> = {
   "transform.x": "Position X",
@@ -129,7 +175,7 @@ const SIMPLE_PATH_LABELS: Record<string, string> = {
 export function humanizeAnimatablePath(path: AnimatablePath): string {
   const parsed = parseAnimatablePath(path);
   if (parsed.kind === "mask") {
-    return `Mask ${MASK_LEAF_LABELS[parsed.leaf]}`;
+    return `Mask ${maskLeafLabel(parsed.leaf)}`;
   }
   return SIMPLE_PATH_LABELS[parsed.path] ?? parsed.path;
 }
@@ -144,7 +190,7 @@ export function humanizeAnimatablePathForClip(
     const masks = clip.masks ?? [];
     const idx = masks.findIndex((m) => m.id === parsed.maskId);
     const n = idx >= 0 ? idx + 1 : 1;
-    return `Mask ${n}: ${MASK_LEAF_LABELS[parsed.leaf]}`;
+    return `Mask ${n}: ${maskLeafLabel(parsed.leaf)}`;
   }
   const groupPrefix: Record<string, string> = {
     "transform.x": "Transform: ",
@@ -529,6 +575,12 @@ export function evaluateClipMask(
   if (mask.stripGap) {
     resolved.stripGap = evaluateMaskLeaf(mask.stripGap, localMs, 0);
   }
+  if (mask.points?.length) {
+    resolved.points = mask.points.map((p) => ({
+      x: evaluateMaskLeaf(p.x, localMs, 0),
+      y: evaluateMaskLeaf(p.y, localMs, 0),
+    }));
+  }
   return resolved;
 }
 
@@ -544,7 +596,12 @@ function getMaskLeaf(
   mask: ClipMask,
   leaf: MaskAnimatableLeaf,
 ): AnimatableProperty<number> | undefined {
-  switch (leaf) {
+  const point = parseMaskPointLeaf(leaf);
+  if (point) {
+    const pt = mask.points?.[point.index];
+    return pt?.[point.axis];
+  }
+  switch (leaf as MaskAnimatableScalarLeaf) {
     case "feather":
       return mask.feather;
     case "expand":
@@ -571,7 +628,15 @@ function setMaskLeaf(
   leaf: MaskAnimatableLeaf,
   prop: AnimatableProperty<number>,
 ): ClipMask {
-  switch (leaf) {
+  const point = parseMaskPointLeaf(leaf);
+  if (point) {
+    const points = (mask.points ?? []).map((p, i) => {
+      if (i !== point.index) return p;
+      return point.axis === "x" ? { ...p, x: prop } : { ...p, y: prop };
+    });
+    return { ...mask, points };
+  }
+  switch (leaf as MaskAnimatableScalarLeaf) {
     case "feather":
       return { ...mask, feather: prop };
     case "expand":
@@ -1082,8 +1147,14 @@ export function listClipAnimatablePaths(clip: Clip): AnimatablePath[] {
     "effect.intensity",
   ];
   for (const mask of clip.masks ?? []) {
-    for (const leaf of MASK_LEAVES) {
+    for (const leaf of MASK_SCALAR_LEAVES) {
       paths.push(maskAnimatablePath(mask.id, leaf));
+    }
+    if (mask.points?.length) {
+      for (let i = 0; i < mask.points.length; i++) {
+        paths.push(maskAnimatablePath(mask.id, maskPointLeaf(i, "x")));
+        paths.push(maskAnimatablePath(mask.id, maskPointLeaf(i, "y")));
+      }
     }
   }
   return paths.filter((path) => {

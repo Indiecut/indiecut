@@ -11,8 +11,8 @@ import ReactMarkdown from "react-markdown";
 import { IconImage, IconSend, IconStop } from "../../icons/Icons";
 import { MAX_USER_REFERENCE_IMAGES } from "../context/downscaleUserImage";
 import {
-  getClaudeModelId,
-  hasAnthropicKey,
+  getChatModelId,
+  hasAnyChatKey,
   hasElevenLabsSfx,
   hasElevenLabsVoice,
   hasGeminiKey,
@@ -70,6 +70,7 @@ export function ChatPanel() {
   const removeDraftImage = useChatStore((s) => s.removeDraftImage);
   const modelId = useChatStore((s) => s.modelId);
   const setModelId = useChatStore((s) => s.setModelId);
+  const selectModel = useChatStore((s) => s.selectModel);
   const visionMode = useChatStore((s) => s.visionMode);
   const setVisionMode = useChatStore((s) => s.setVisionMode);
   const chatMode = useChatStore((s) => s.chatMode);
@@ -79,7 +80,7 @@ export function ChatPanel() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
 
-  const [keyReady, setKeyReady] = useState(() => hasAnthropicKey());
+  const [keyReady, setKeyReady] = useState(() => hasAnyChatKey());
   const [imageSkill, setImageSkill] = useState(() => hasGeminiKey());
   const [voiceSkill, setVoiceSkill] = useState(() => hasElevenLabsVoice());
   const [sfxSkill, setSfxSkill] = useState(() => hasElevenLabsSfx());
@@ -91,17 +92,17 @@ export function ChatPanel() {
   const canSend = Boolean(draft.trim() || draftImages.length > 0);
 
   useEffect(() => {
-    setKeyReady(hasAnthropicKey());
+    setKeyReady(hasAnyChatKey());
     setImageSkill(hasGeminiKey());
     setVoiceSkill(hasElevenLabsVoice());
     setSfxSkill(hasElevenLabsSfx());
-    setModelId(getClaudeModelId());
+    setModelId(getChatModelId());
     return subscribeAiSecrets(() => {
-      setKeyReady(hasAnthropicKey());
+      setKeyReady(hasAnyChatKey());
       setImageSkill(hasGeminiKey());
       setVoiceSkill(hasElevenLabsVoice());
       setSfxSkill(hasElevenLabsSfx());
-      setModelId(getClaudeModelId());
+      setModelId(getChatModelId());
     });
   }, [setModelId]);
 
@@ -110,6 +111,13 @@ export function ChatPanel() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   const blocked = !keyReady;
 
@@ -317,7 +325,7 @@ export function ChatPanel() {
         {blocked ? (
           <div className="chat-panel__blocked">
             <p className="chat-panel__blocked-text">
-              Add an Anthropic API key to use Chat.
+              Add an Anthropic or OpenAI API key to use Chat.
             </p>
             <button
               type="button"
@@ -375,61 +383,67 @@ export function ChatPanel() {
               hidden
               onChange={onPickFiles}
             />
-            <div className="chat-panel__composer-left">
-              <ModePicker
-                value={chatMode}
-                disabled={streaming}
-                onChange={setChatMode}
-              />
-              <ModelPicker
-                value={modelId}
-                disabled={streaming}
-                onChange={setModelId}
-              />
-              <button
-                type="button"
-                className="chat-panel__attach-btn"
-                title={
-                  draftImages.length >= MAX_USER_REFERENCE_IMAGES
-                    ? `Up to ${MAX_USER_REFERENCE_IMAGES} reference images`
-                    : "Attach reference image"
-                }
-                aria-label="Attach reference image"
-                disabled={
-                  streaming || draftImages.length >= MAX_USER_REFERENCE_IMAGES
-                }
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <IconImage size={14} />
-              </button>
+            <div className="chat-panel__composer-bar">
+              <div className="chat-panel__composer-left">
+                <ModePicker
+                  value={chatMode}
+                  disabled={streaming}
+                  onChange={setChatMode}
+                />
+                <ModelPicker
+                  value={modelId}
+                  disabled={streaming}
+                  onChange={(id) => {
+                    void selectModel(id);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="chat-panel__attach-btn"
+                  title={
+                    draftImages.length >= MAX_USER_REFERENCE_IMAGES
+                      ? `Up to ${MAX_USER_REFERENCE_IMAGES} reference images`
+                      : "Attach reference image"
+                  }
+                  aria-label="Attach reference image"
+                  disabled={
+                    streaming || draftImages.length >= MAX_USER_REFERENCE_IMAGES
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <IconImage size={14} />
+                </button>
+              </div>
+              <div className="chat-panel__composer-right">
+                <VisionModePicker
+                  value={visionMode}
+                  disabled={streaming}
+                  onChange={setVisionMode}
+                />
+                {streaming ? (
+                  <button
+                    type="button"
+                    className="chat-panel__icon-btn chat-panel__icon-btn--stop"
+                    title="Stop"
+                    aria-label="Stop"
+                    onClick={() => stopStreaming()}
+                  >
+                    <IconStop size={14} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="chat-panel__icon-btn chat-panel__icon-btn--send"
+                    title="Send"
+                    aria-label="Send"
+                    disabled={!canSend}
+                    onClick={() => void sendMessage()}
+                  >
+                    <IconSend size={14} />
+                  </button>
+                )}
+              </div>
             </div>
-            <VisionModePicker
-              value={visionMode}
-              disabled={streaming}
-              onChange={setVisionMode}
-            />
-            {streaming ? (
-              <button
-                type="button"
-                className="chat-panel__icon-btn chat-panel__icon-btn--stop"
-                title="Stop"
-                aria-label="Stop"
-                onClick={() => stopStreaming()}
-              >
-                <IconStop size={14} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="chat-panel__icon-btn chat-panel__icon-btn--send"
-                title="Send"
-                aria-label="Send"
-                disabled={!canSend}
-                onClick={() => void sendMessage()}
-              >
-                <IconSend size={14} />
-              </button>
-            )}
           </div>
         )}
       </div>

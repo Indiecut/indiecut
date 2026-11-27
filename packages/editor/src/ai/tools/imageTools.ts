@@ -168,11 +168,12 @@ async function capturePlateForEdit(
   }
 
   if (source === "composite") {
-    let maxWidth = 1280;
+    // Plate for Gemini edit — slightly sharper than Claude vision, still capped.
+    let maxWidth = 1024;
     if (typeof input.maxWidth === "number" && Number.isFinite(input.maxWidth)) {
-      maxWidth = Math.min(1920, Math.max(64, Math.round(input.maxWidth)));
+      maxWidth = Math.min(1280, Math.max(64, Math.round(input.maxWidth)));
     }
-    let quality = 0.85;
+    let quality = 0.75;
     if (typeof input.quality === "number" && Number.isFinite(input.quality)) {
       quality = Math.min(1, Math.max(0.1, input.quality));
     }

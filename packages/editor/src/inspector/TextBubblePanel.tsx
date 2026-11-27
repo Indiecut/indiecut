@@ -1,3 +1,7 @@
+import {
+  presetPoints,
+  type VectorShapePreset,
+} from "../geometry/vectorShape";
 import type { Clip, TextBubbleProps, TextProps, Track } from "../project/types";
 import { ColorField } from "./ColorField";
 import { useClipGestureEdit } from "./useClipGestureEdit";
@@ -22,6 +26,7 @@ const BUBBLE_TYPES: Array<{
   { id: "torn-paper", label: "Torn" },
   { id: "typing-box", label: "Typing" },
   { id: "promo-badge", label: "Badge" },
+  { id: "custom", label: "Custom" },
 ];
 
 export const DEFAULT_BUBBLE: TextBubbleProps = {
@@ -52,7 +57,20 @@ const DEFAULT_FILL_FOR_TYPE: Partial<
   "typing-box": "#ffffff",
   "promo-badge": "#f97316",
   "rounded-rect": "#ffffff",
+  custom: "#f97316",
 };
+
+const CUSTOM_SEED_PRESETS: {
+  id: Exclude<VectorShapePreset, "custom">;
+  label: string;
+}[] = [
+  { id: "star", label: "Star" },
+  { id: "hexagon", label: "Hex" },
+  { id: "heart", label: "Heart" },
+  { id: "arrow", label: "Arrow" },
+  { id: "diamond", label: "Diamond" },
+  { id: "roundedRect", label: "Card" },
+];
 
 function resolveBubble(text: TextProps): TextBubbleProps {
   const b = text.bubble;
@@ -70,6 +88,8 @@ function resolveBubble(text: TextProps): TextBubbleProps {
     paddingY: b.paddingY ?? DEFAULT_BUBBLE.paddingY,
     accentColor: b.accentColor,
     opacity,
+    points: b.points,
+    pathD: b.pathD,
   };
 }
 
@@ -114,8 +134,28 @@ export function TextBubblePanel({ clip, track, text }: Props) {
         type,
         fill: nextFill,
         stroke: nextStroke,
+        points:
+          type === "custom"
+            ? (bubble.points?.length ?? 0) >= 3
+              ? bubble.points
+              : presetPoints("star")
+            : bubble.points,
+        pathD: type === "custom" ? bubble.pathD : undefined,
       },
       "Bubble type",
+    );
+  };
+
+  const seedCustom = (preset: Exclude<VectorShapePreset, "custom">) => {
+    commitBubble(
+      {
+        ...bubble,
+        type: "custom",
+        points: presetPoints(preset),
+        // Seed replaces AI path with a polygon preset.
+        pathD: undefined,
+      },
+      "Bubble shape",
     );
   };
 
@@ -125,7 +165,8 @@ export function TextBubblePanel({ clip, track, text }: Props) {
         <h3 className="inspector-section__title">Shape</h3>
       </div>
       <p className="inspector-panel__hint">
-        SVG-style chrome behind the text. Edit the text anytime — shape stays.
+        Shape chrome behind the text. Custom shapes are AI-authored SVG paths
+        (static) — ask the AI, or seed a preset below. No SVG upload.
       </p>
 
       <div
@@ -158,6 +199,29 @@ export function TextBubblePanel({ clip, track, text }: Props) {
           );
         })}
       </div>
+
+      {bubble.type === "custom" && (
+        <label className="inspector-field inspector-field--stack">
+          <span className="inspector-field__label">
+            {bubble.pathD
+              ? "Custom SVG path (AI) — seed replaces it"
+              : `Custom seed (${bubble.points?.length ?? 0} pts)`}
+          </span>
+          <div className="mask-chip-row">
+            {CUSTOM_SEED_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="mask-chip"
+                disabled={locked}
+                onClick={() => seedCustom(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </label>
+      )}
 
       <ColorField
         label="Fill"

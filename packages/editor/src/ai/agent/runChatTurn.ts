@@ -18,13 +18,13 @@ import type {
   ChatMessage,
   ChatPendingPlan,
 } from "../persistence/chatTranscript";
-import {
-  streamMessage,
-  type AnthropicChatMessage,
-  type AnthropicContentBlock,
-  type AnthropicImageBlock,
-  type StreamToolUse,
+import type {
+  AnthropicChatMessage,
+  AnthropicContentBlock,
+  AnthropicImageBlock,
+  StreamToolUse,
 } from "../providers/anthropic";
+import { streamChat } from "../providers/streamChat";
 import { findClip, getEditorStore } from "../../store/editorStore";
 import type { Clip, Track } from "../../project/types";
 import {
@@ -248,6 +248,56 @@ function toolResultBlock(
     content: JSON.stringify(result.data),
     is_error: !result.ok,
   };
+}
+
+function contentHasImage(
+  content: string | AnthropicContentBlock[],
+): boolean {
+  if (typeof content === "string") return false;
+  return content.some((b) => {
+    if (b.type === "image") return true;
+    if (b.type === "tool_result" && Array.isArray(b.content)) {
+      return b.content.some((c) => c.type === "image");
+    }
+    return false;
+  });
+}
+
+/**
+ * Drop prior vision image bytes from the in-turn message list so later
+ * API rounds do not re-bill old captures. Keeps text / JSON summaries.
+ */
+function stripPriorVisionImages(
+  messages: AnthropicChatMessage[],
+): void {
+  for (const msg of messages) {
+    if (typeof msg.content === "string") continue;
+    const next: AnthropicContentBlock[] = [];
+    for (const block of msg.content) {
+      if (block.type === "image") {
+        next.push({
+          type: "text",
+          text: "[prior vision frame omitted to save tokens]",
+        });
+        continue;
+      }
+      if (block.type === "tool_result" && Array.isArray(block.content)) {
+        const filtered = block.content.flatMap((c) => {
+          if (c.type !== "image") return [c];
+          return [
+            {
+              type: "text" as const,
+              text: "[prior capture image omitted to save tokens]",
+            },
+          ];
+        });
+        next.push({ ...block, content: filtered });
+        continue;
+      }
+      next.push(block);
+    }
+    msg.content = next;
+  }
 }
 
 type BatchThumb = {
@@ -733,7 +783,7 @@ export async function runChatTurn(
       status: "running",
     });
     const stream = bindProgressDelta(progress, thinkStep, opts.onDelta);
-    const reply = await streamMessage({
+    const reply = await streamChat({
       apiKey: opts.apiKey,
       model: opts.model,
       system,
@@ -772,7 +822,7 @@ export async function runChatTurn(
     });
 
     const stream = bindProgressDelta(progress, thinkStep, opts.onDelta);
-    const reply = await streamMessage({
+    const reply = await streamChat({
       apiKey: opts.apiKey,
       model: opts.model,
       system,
@@ -894,6 +944,11 @@ export async function runChatTurn(
       (r) => toolResultBlock(r.toolUseId, r.result),
     );
 
+    // New captures supersede older ones — avoid re-sending image tiles every round.
+    if (toolResultBlocks.some((b) => contentHasImage([b]))) {
+      stripPriorVisionImages(messages);
+    }
+
     messages.push(
       { role: "assistant", content: reply.content },
       { role: "user", content: toolResultBlocks },
@@ -908,7 +963,7 @@ export async function runChatTurn(
         status: "running",
       });
       const wrapStream = bindProgressDelta(progress, wrapStep, opts.onDelta);
-      const wrap = await streamMessage({
+      const wrap = await streamChat({
         apiKey: opts.apiKey,
         model: opts.model,
         system,
@@ -934,7 +989,7 @@ export async function runChatTurn(
       status: "running",
     });
     const wrapStream = bindProgressDelta(progress, wrapStep, opts.onDelta);
-    const wrap = await streamMessage({
+    const wrap = await streamChat({
       apiKey: opts.apiKey,
       model: opts.model,
       system,

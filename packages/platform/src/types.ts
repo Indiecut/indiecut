@@ -85,10 +85,17 @@ export interface IndieCutCapabilities {
 /** Claude model allowlist ids (Phase 1). */
 export type ClaudeModelId = "claude-sonnet-5-5" | "claude-haiku-5-5";
 
+/** OpenAI chat model allowlist. */
+export type OpenAiModelId = "gpt-4o" | "gpt-4o-mini" | "gpt-6-luna-max";
+
+/** Which provider powers Ask / Agent chat. */
+export type ChatProviderId = "anthropic" | "openai";
+
 /** App-scoped AI secrets — never stored in project folders. */
 export type AiSecretsV1 = {
   version: 1;
   anthropicKey?: string;
+  openaiKey?: string;
   geminiKey?: string;
   elevenLabsKey?: string;
   elevenLabsVoiceId?: string;
@@ -97,7 +104,10 @@ export type AiSecretsV1 = {
    * `false` disables the SFX skill even if an API key is present.
    */
   elevenLabsSfxOk?: boolean;
+  /** Active chat provider (Ask / Agent). Default anthropic. */
+  chatProviderId?: ChatProviderId;
   claudeModelId?: ClaudeModelId;
+  openaiModelId?: OpenAiModelId;
 };
 
 export interface IndieCutSecretsBridge {
@@ -148,6 +158,26 @@ export type AnthropicBridgeContent =
  * Optional Anthropic streaming proxy (desktop). Avoids browser CORS;
  * web may omit and use renderer fetch.
  */
+export type IndieCutAiStreamUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
+
+export type IndieCutAiStreamEvent = {
+  streamId: string;
+  type: "delta" | "tool_use" | "usage" | "done" | "error";
+  text?: string;
+  error?: string;
+  toolUse?: {
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+  };
+  usage?: IndieCutAiStreamUsage;
+};
+
 export interface IndieCutAiBridge {
   streamAnthropic: (opts: {
     streamId: string;
@@ -170,17 +200,32 @@ export interface IndieCutAiBridge {
     apiKey: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   onAnthropicEvent: (
-    listener: (event: {
-      streamId: string;
-      type: "delta" | "tool_use" | "done" | "error";
-      text?: string;
-      error?: string;
-      toolUse?: {
-        id: string;
-        name: string;
-        input: Record<string, unknown>;
-      };
-    }) => void,
+    listener: (event: IndieCutAiStreamEvent) => void,
+  ) => () => void;
+
+  /** OpenAI Chat Completions streaming (desktop CORS proxy). */
+  streamOpenAI?: (opts: {
+    streamId: string;
+    apiKey: string;
+    model: string;
+    /** OpenAI chat messages array (already converted). */
+    messages: unknown[];
+    tools?: unknown[];
+    /** GPT-6 Luna reasoning effort (`max` for Luna Max; `none` when tools). */
+    reasoningEffort?:
+      | "none"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh"
+      | "max";
+  }) => Promise<void>;
+  abortOpenAI?: (streamId: string) => Promise<void>;
+  probeOpenAI?: (opts: {
+    apiKey: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  onOpenAIEvent?: (
+    listener: (event: IndieCutAiStreamEvent) => void,
   ) => () => void;
 }
 

@@ -95,7 +95,8 @@ registerCapability({
   id: "timeline.insertSticker",
   domain: "timeline",
   title: "Insert sticker",
-  summary: "Insert a sticker from the catalog onto the timeline",
+  summary:
+    "Insert a sticker from the catalog. Use stickerId shape or shape:<preset> (circle|star|hexagon|heart|arrow|…) for vector shapes; optional stickerStyle { shapePreset, points, fill, stroke, strokeWidth }.",
   verbs: ["timeline"],
   targets: ["timeline"],
   risk: "safe",
@@ -105,6 +106,7 @@ registerCapability({
     startMs: z.number().optional(),
     durationMs: z.number().optional(),
     trackId: z.string().optional(),
+    stickerStyle: z.record(z.string(), z.unknown()).optional(),
   }),
 });
 

@@ -50,6 +50,15 @@ highlight (marker bg hex or null), strokeColor, strokeWidth, letterSpacing.
 ### Box-only fields (whole clip)
 align, lineHeight, shadow*, retro3DColor, bubble (via text.bubble).
 
+### Custom text shape (bubble)
+path \`text.bubble\` with \`type: "custom"\`. Prefer AI-authored SVG \`pathD\`
+(path \`d\` string) in ±0.5 center-origin space — curves allowed (C/Q/A), close
+with Z. Example: \`M-0.45-0.2 C-0.45-0.45 0.45-0.45 0.45-0.2 L0.45 0.35 Z\`.
+Fallback: \`points: [{x,y},...]\` polygon (min 3). Also set fill/stroke/
+strokeWidth/opacity/padding*. Invent the full shape in one patch — static
+chrome only (no upload, no keyframed morph). Preset types still work
+(speech-round, pill, star-badge, …).
+
 ### Gradient example
 \`linear-gradient(90deg, #f59e0b 0%, #ec4899 100%)\`
 
@@ -68,7 +77,7 @@ registerCapability({
   domain: "clip",
   title: "Text properties",
   summary:
-    "Rich text: content, runs (per-span style), font, color, gradient, stroke, shadow, highlight, align",
+    "Rich text: content, runs (per-span style), font, color, gradient, stroke, shadow, highlight, align, bubble (incl. type custom + pathD SVG / points)",
   verbs: ["inspect", "patch"],
   targets: ["clip"],
   risk: "safe",
@@ -78,6 +87,7 @@ registerCapability({
     "Use text.runs for mixed fonts/colors/highlights in one clip",
     "gradient is a CSS linear-gradient(...) string; null clears",
     "highlight is a marker background color; null clears",
+    "Custom bubble: prefer pathD (SVG d in ±0.5 space); no user upload; static only",
   ],
   examples: [
     {

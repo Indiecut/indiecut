@@ -1,22 +1,71 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "../../icons/Icons";
 import {
   CLAUDE_MODELS,
-  type ClaudeModelId,
+  hasAnthropicKey,
+  hasKeyForChatModel,
+  hasOpenAiKey,
+  OPENAI_MODELS,
+  subscribeAiSecrets,
 } from "../secrets/aiSecrets";
 
 type ModelPickerProps = {
-  value: ClaudeModelId;
+  value: string;
   disabled?: boolean;
-  onChange: (id: ClaudeModelId) => void;
+  onChange: (id: string) => void;
+};
+
+type ChatModelOption = {
+  id: string;
+  shortLabel: string;
+  label: string;
+  hint: string;
+};
+
+type ModelGroup = {
+  id: "anthropic" | "openai";
+  label: string;
+  models: readonly ChatModelOption[];
+  keyReady: boolean;
 };
 
 export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
+  const [keysVersion, setKeysVersion] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+
+  useEffect(() => {
+    return subscribeAiSecrets(() => setKeysVersion((v) => v + 1));
+  }, []);
+
+  const groups = useMemo<ModelGroup[]>(() => {
+    void keysVersion;
+    return [
+      {
+        id: "anthropic",
+        label: "Claude",
+        models: CLAUDE_MODELS,
+        keyReady: hasAnthropicKey(),
+      },
+      {
+        id: "openai",
+        label: "OpenAI",
+        models: OPENAI_MODELS,
+        keyReady: hasOpenAiKey(),
+      },
+    ];
+  }, [keysVersion]);
+
+  const allModels = useMemo(
+    () => groups.flatMap((g) => g.models),
+    [groups],
+  );
+
   const selected =
-    CLAUDE_MODELS.find((m) => m.id === value) ?? CLAUDE_MODELS[0]!;
+    allModels.find((m) => m.id === value) ??
+    allModels.find((m) => hasKeyForChatModel(m.id)) ??
+    allModels[0]!;
 
   useEffect(() => {
     if (!open) return;
@@ -59,41 +108,64 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
       {open ? (
         <ul
           id={listId}
-          className="chat-model-picker__menu"
+          className="chat-model-picker__menu chat-model-picker__menu--grouped"
           role="listbox"
-          aria-label="Claude model"
+          aria-label="Chat model"
         >
-          {CLAUDE_MODELS.map((m) => {
-            const active = m.id === value;
-            return (
-              <li key={m.id} role="presentation">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  className={`chat-model-picker__option${active ? " chat-model-picker__option--active" : ""}`}
-                  onClick={() => {
-                    onChange(m.id);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="chat-model-picker__option-text">
-                    <span className="chat-model-picker__option-label">
-                      {m.shortLabel}
-                    </span>
-                    <span className="chat-model-picker__option-hint">
-                      {m.hint}
-                    </span>
-                  </span>
-                  {active ? (
-                    <IconCheck size={12} className="chat-model-picker__check" />
-                  ) : (
-                    <span className="chat-model-picker__check-spacer" />
-                  )}
-                </button>
-              </li>
-            );
-          })}
+          {groups.map((group) => (
+            <li key={group.id} role="presentation" className="chat-model-picker__group">
+              <div className="chat-model-picker__group-label" aria-hidden="true">
+                {group.label}
+                {!group.keyReady ? (
+                  <span className="chat-model-picker__group-note">No API key</span>
+                ) : null}
+              </div>
+              <ul className="chat-model-picker__group-list" role="group" aria-label={group.label}>
+                {group.models.map((m) => {
+                  const active = m.id === value;
+                  const ready = group.keyReady;
+                  return (
+                    <li key={m.id} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        disabled={!ready}
+                        title={
+                          ready
+                            ? m.label
+                            : `Add ${group.label} API key in Settings → AI`
+                        }
+                        className={`chat-model-picker__option${active ? " chat-model-picker__option--active" : ""}${!ready ? " chat-model-picker__option--disabled" : ""}`}
+                        onClick={() => {
+                          if (!ready) return;
+                          onChange(m.id);
+                          setOpen(false);
+                        }}
+                      >
+                        <span className="chat-model-picker__option-text">
+                          <span className="chat-model-picker__option-label">
+                            {m.shortLabel}
+                          </span>
+                          <span className="chat-model-picker__option-hint">
+                            {m.hint}
+                          </span>
+                        </span>
+                        {active ? (
+                          <IconCheck
+                            size={12}
+                            className="chat-model-picker__check"
+                          />
+                        ) : (
+                          <span className="chat-model-picker__check-spacer" />
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
         </ul>
       ) : null}
     </div>

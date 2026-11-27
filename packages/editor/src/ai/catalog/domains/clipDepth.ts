@@ -103,7 +103,7 @@ registerCapability({
   domain: "clip",
   title: "Masks",
   summary:
-    "Geometric / text masks on video/image. Set path masks to an array of { type, invert?, feather?, position?, size?, ... }; bare numbers OK. Also set masksEnabled true. Keyframe leaves via animPath masks.<id>.*",
+    "Geometric / text / custom-polygon masks on video/image. Set path masks to an array of { type, invert?, feather?, position?, size?, points? }; type custom uses points in ±0.5 space (min 3). Prefer replacing the whole points array when authoring. Also set masksEnabled true. Keyframe leaves via animPath masks.<id>.* including masks.<id>.points.<i>.x|y for morphing.",
   verbs: ["inspect", "patch", "keyframe"],
   targets: ["clip"],
   risk: "safe",
@@ -117,7 +117,8 @@ registerCapability({
   id: "clip.stickerStyle",
   domain: "clip",
   title: "Sticker style",
-  summary: "Sticker style params on sticker clips",
+  summary:
+    "Sticker style on sticker clips. Kinetic: paletteKey/backingMode/strokeScale. Shape stickers (stickerId=shape): shapePreset (circle|star|hexagon|…|custom), points (±0.5), fill, stroke, strokeWidth, opacity.",
   verbs: ["inspect", "patch"],
   targets: ["clip"],
   risk: "safe",
