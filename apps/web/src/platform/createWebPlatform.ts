@@ -250,7 +250,7 @@ function resolveUnderProject(projectPath: string, relativePath: string): string 
 
 export function createWebPlatform(): IndieCutBridge {
   return {
-    version: "1.0.0-web",
+    version: "1.1.0-web",
     capabilities: {
       revealInFolder: false,
       openLocalPath: false,

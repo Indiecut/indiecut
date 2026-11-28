@@ -18,7 +18,7 @@ Built with Electron, React, and Vite, this robust, open-source video editor offe
 **Try now:** [app.indiecut.io](https://app.indiecut.io)  
 **Website:** [indiecut.io](https://indiecut.io)  
 **Source:** [github.com/Indiecut/indiecut](https://github.com/Indiecut/indiecut)  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **License:** [MIT](LICENSE)
 
 ## Why Use IndieCut?
@@ -107,7 +107,7 @@ The output ends up in `apps/web/dist`; use your preferred static host to serve t
 **Ship a release**
 
 1. When necessary, raise the `"version"` in the root and workspace `package.json` files
-2. Commit, then tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. Commit, then tag: `git tag v1.1.0 && git push origin v1.1.0`
 3. Installers for Mac and Windows are created by the [Release](.github/workflows/release.yml) workflow and published on that tag
 
 **Build locally**
