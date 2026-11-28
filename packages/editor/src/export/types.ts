@@ -1,4 +1,4 @@
-export type ExportResolution = "720P" | "1080P" | "2K";
+export type ExportResolution = "720P" | "1080P" | "2K" | "4K";
 export type ExportBitRate = "lower" | "recommended" | "higher";
 export type ExportFrameRate = 24 | 25 | 30 | 60;
 

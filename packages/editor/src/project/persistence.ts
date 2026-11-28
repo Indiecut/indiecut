@@ -4,6 +4,7 @@ import {
   coerceTransform,
   coerceTransform3D,
 } from "../engine/animatable";
+import { normalizeTextProps } from "../text/runs";
 import { createEmptyProject } from "./createProject";
 import type {
   BlendMode,
@@ -38,6 +39,8 @@ import type {
   TextAnimPhase,
   TextBubbleProps,
   TextProps,
+  TextRun,
+  TextRunStyle,
   Track,
   TrackType,
 } from "./types";
@@ -122,6 +125,7 @@ const MASK_TYPES = new Set<MaskType>([
   "stars",
   "heart",
   "text",
+  "custom",
 ]);
 
 const MASK_BOOLEANS = new Set<MaskBoolean>(["add", "subtract", "intersect"]);
@@ -478,7 +482,35 @@ const TEXT_BUBBLE_TYPES = new Set<TextBubbleProps["type"]>([
   "ticket",
   "rounded-rect",
   "star-badge",
+  "custom",
 ]);
+
+function parseStaticShapePoints(
+  raw: unknown,
+): TextBubbleProps["points"] | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined;
+  const out: NonNullable<TextBubbleProps["points"]> = [];
+  for (const item of raw) {
+    if (!isPlainObject(item)) continue;
+    const x = asNumber(item.x, NaN);
+    const y = asNumber(item.y, NaN);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out.push({ x, y });
+  }
+  return out.length >= 3 ? out : undefined;
+}
+
+/** Max SVG path `d` length for custom text bubbles (AI-authored, static). */
+const MAX_BUBBLE_PATH_D = 8_000;
+
+function parseBubblePathD(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const d = raw.trim();
+  if (d.length < 2 || d.length > MAX_BUBBLE_PATH_D) return undefined;
+  // Must look like an SVG path (move-to somewhere).
+  if (!/[Mm]/.test(d)) return undefined;
+  return d;
+}
 
 function parseTextBubble(raw: unknown): TextBubbleProps | undefined {
   if (!isPlainObject(raw)) return undefined;
@@ -487,6 +519,8 @@ function parseTextBubble(raw: unknown): TextBubbleProps | undefined {
     TEXT_BUBBLE_TYPES.has(raw.type as TextBubbleProps["type"])
       ? (raw.type as TextBubbleProps["type"])
       : "none";
+  const points = parseStaticShapePoints(raw.points);
+  const pathD = parseBubblePathD(raw.pathD);
   return {
     type,
     fill: typeof raw.fill === "string" ? raw.fill : "#ffffff",
@@ -505,6 +539,12 @@ function parseTextBubble(raw: unknown): TextBubbleProps | undefined {
         : 8,
     accentColor:
       typeof raw.accentColor === "string" ? raw.accentColor : undefined,
+    opacity:
+      typeof raw.opacity === "number" && Number.isFinite(raw.opacity)
+        ? Math.min(1, Math.max(0, raw.opacity))
+        : undefined,
+    points,
+    pathD,
   };
 }
 
@@ -667,6 +707,7 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
 
   const textDecoration: TextProps["textDecoration"] =
     raw.textDecoration === "underline" ||
+    raw.textDecoration === "line-through" ||
     raw.textDecoration === "none"
       ? raw.textDecoration
       : undefined;
@@ -679,7 +720,7 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
       ? raw.textTransform
       : undefined;
 
-  return {
+  const parsed: TextProps = {
     content,
     fontFamily:
       typeof raw.fontFamily === "string" ? raw.fontFamily : undefined,
@@ -742,7 +783,73 @@ export function parseTextProps(raw: unknown): TextProps | undefined {
         : typeof raw.templateId === "string"
           ? raw.templateId
           : undefined,
+    runs: parseTextRuns(raw.runs),
   };
+  return normalizeTextProps(parsed);
+}
+
+function parseTextRunStyle(raw: unknown): TextRunStyle | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const style: TextRunStyle = {};
+  if (typeof raw.fontFamily === "string") style.fontFamily = raw.fontFamily;
+  if (typeof raw.fontSize === "number" && Number.isFinite(raw.fontSize)) {
+    style.fontSize = Math.max(1, raw.fontSize);
+  }
+  if (typeof raw.fontWeight === "number" || typeof raw.fontWeight === "string") {
+    style.fontWeight = raw.fontWeight;
+  }
+  if (raw.fontStyle === "italic" || raw.fontStyle === "normal") {
+    style.fontStyle = raw.fontStyle;
+  }
+  if (
+    raw.textDecoration === "none" ||
+    raw.textDecoration === "underline" ||
+    raw.textDecoration === "line-through"
+  ) {
+    style.textDecoration = raw.textDecoration;
+  }
+  if (
+    raw.textTransform === "none" ||
+    raw.textTransform === "uppercase" ||
+    raw.textTransform === "lowercase" ||
+    raw.textTransform === "capitalize"
+  ) {
+    style.textTransform = raw.textTransform;
+  }
+  if (
+    raw.script === "normal" ||
+    raw.script === "super" ||
+    raw.script === "sub"
+  ) {
+    style.script = raw.script;
+  }
+  if (typeof raw.color === "string") style.color = raw.color;
+  if (raw.gradient === null) style.gradient = null;
+  else if (typeof raw.gradient === "string") style.gradient = raw.gradient;
+  if (raw.highlight === null) style.highlight = null;
+  else if (typeof raw.highlight === "string") style.highlight = raw.highlight;
+  if (typeof raw.strokeColor === "string") style.strokeColor = raw.strokeColor;
+  if (typeof raw.strokeWidth === "number" && Number.isFinite(raw.strokeWidth)) {
+    style.strokeWidth = Math.max(0, raw.strokeWidth);
+  }
+  if (
+    typeof raw.letterSpacing === "number" &&
+    Number.isFinite(raw.letterSpacing)
+  ) {
+    style.letterSpacing = raw.letterSpacing;
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function parseTextRuns(raw: unknown): TextRun[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const runs: TextRun[] = [];
+  for (const item of raw) {
+    if (!isPlainObject(item)) continue;
+    const text = typeof item.text === "string" ? item.text : "";
+    runs.push({ text, style: parseTextRunStyle(item.style) });
+  }
+  return runs;
 }
 
 function parseMaskText(raw: unknown): MaskTextProps | undefined {
@@ -858,8 +965,25 @@ function parseClipMask(raw: unknown): ClipMask | null {
         ? undefined
         : coerceAdjustLeaf(raw.stripGap, (n) => Math.max(0, n), 0),
     text: parseMaskText(raw.text),
+    points:
+      type === "custom" ? parseAnimatableShapePoints(raw.points) : undefined,
   };
   return mask;
+}
+
+function parseAnimatableShapePoints(
+  raw: unknown,
+): ClipMask["points"] | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined;
+  const out: NonNullable<ClipMask["points"]> = [];
+  for (const item of raw) {
+    if (!isPlainObject(item)) continue;
+    out.push({
+      x: coerceAnimatableNumber(item.x, 0),
+      y: coerceAnimatableNumber(item.y, 0),
+    });
+  }
+  return out.length >= 3 ? out : undefined;
 }
 
 function parseMasks(raw: unknown): ClipMask[] | undefined {
@@ -909,6 +1033,18 @@ const STICKER_PALETTE_KEYS = new Set([
   "mono",
 ]);
 const STICKER_BACKINGS = new Set(["diecut", "flat", "glow"]);
+const STICKER_SHAPE_PRESETS = new Set([
+  "circle",
+  "rectangle",
+  "roundedRect",
+  "triangle",
+  "diamond",
+  "hexagon",
+  "star",
+  "heart",
+  "arrow",
+  "custom",
+]);
 
 function parseStickerStyle(raw: unknown): StickerStyleParams | undefined {
   if (!isPlainObject(raw)) return undefined;
@@ -927,6 +1063,22 @@ function parseStickerStyle(raw: unknown): StickerStyleParams | undefined {
   }
   if (typeof raw.strokeScale === "number" && Number.isFinite(raw.strokeScale)) {
     style.strokeScale = Math.min(2, Math.max(0.5, raw.strokeScale));
+  }
+  if (
+    typeof raw.shapePreset === "string" &&
+    STICKER_SHAPE_PRESETS.has(raw.shapePreset)
+  ) {
+    style.shapePreset = raw.shapePreset as StickerStyleParams["shapePreset"];
+  }
+  const points = parseStaticShapePoints(raw.points);
+  if (points) style.points = points;
+  if (typeof raw.fill === "string") style.fill = raw.fill;
+  if (typeof raw.stroke === "string") style.stroke = raw.stroke;
+  if (typeof raw.strokeWidth === "number" && Number.isFinite(raw.strokeWidth)) {
+    style.strokeWidth = Math.max(0, raw.strokeWidth);
+  }
+  if (typeof raw.opacity === "number" && Number.isFinite(raw.opacity)) {
+    style.opacity = Math.min(1, Math.max(0, raw.opacity));
   }
   return Object.keys(style).length > 0 ? style : undefined;
 }

@@ -3,7 +3,9 @@ const {
   BrowserWindow,
   dialog,
   ipcMain,
+  net,
   powerSaveBlocker,
+  safeStorage,
   session,
   shell,
 } = require("electron");
@@ -66,7 +68,46 @@ const PROJECT_SUBDIRS = [
   "exports",
   "filters",
   "cache",
+  "ai",
 ];
+
+/** @type {Map<string, AbortController>} */
+const anthropicStreams = new Map();
+
+function aiSecretsPath() {
+  return path.join(app.getPath("userData"), "ai-secrets.bin");
+}
+
+function encodeAiSecretsPayload(obj) {
+  const json = JSON.stringify(obj);
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(json);
+    return Buffer.concat([Buffer.from([1]), encrypted]);
+  }
+  console.warn(
+    "[indiecut] safeStorage unavailable — AI secrets stored unencrypted in userData",
+  );
+  return Buffer.concat([Buffer.from([0]), Buffer.from(json, "utf8")]);
+}
+
+function decodeAiSecretsPayload(buf) {
+  if (!buf || buf.length < 2) return null;
+  const flag = buf[0];
+  const body = buf.subarray(1);
+  try {
+    if (flag === 1) {
+      if (!safeStorage.isEncryptionAvailable()) return null;
+      const json = safeStorage.decryptString(body);
+      return JSON.parse(json);
+    }
+    if (flag === 0) {
+      return JSON.parse(body.toString("utf8"));
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 const MEDIA_EXTENSIONS = [
   "mp4",
@@ -118,6 +159,13 @@ function createWindow() {
   win.once("ready-to-show", () => {
     win.show();
   });
+
+  const sendFullScreen = () => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("window:fullscreen-changed", win.isFullScreen());
+  };
+  win.on("enter-full-screen", sendFullScreen);
+  win.on("leave-full-screen", sendFullScreen);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void win.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -481,6 +529,11 @@ handle("fs:listProjectDir", async (_event, projectPath, relativeDir) => {
   }
 });
 
+handle("window:isFullScreen", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win?.isFullScreen() ?? false;
+});
+
 handle("power:blockSleep", () => {
   if (
     exportSleepBlockerId == null ||
@@ -500,6 +553,283 @@ handle("power:allowSleep", () => {
   }
   exportSleepBlockerId = null;
   return { ok: true };
+});
+
+handle("secrets:getAiSecrets", async () => {
+  try {
+    const filePath = aiSecretsPath();
+    const buf = await fs.readFile(filePath);
+    const parsed = decodeAiSecretsPayload(buf);
+    if (!parsed || parsed.version !== 1) return null;
+    return parsed;
+  } catch (err) {
+    if (err && err.code === "ENOENT") return null;
+    console.warn("[indiecut] failed to read AI secrets", err);
+    return null;
+  }
+});
+
+handle("secrets:setAiSecrets", async (_event, next) => {
+  if (!next || typeof next !== "object" || next.version !== 1) {
+    throw new Error("Invalid AI secrets payload");
+  }
+  const payload = {
+    version: 1,
+    anthropicKey:
+      typeof next.anthropicKey === "string" ? next.anthropicKey : undefined,
+    geminiKey: typeof next.geminiKey === "string" ? next.geminiKey : undefined,
+    elevenLabsKey:
+      typeof next.elevenLabsKey === "string" ? next.elevenLabsKey : undefined,
+    elevenLabsVoiceId:
+      typeof next.elevenLabsVoiceId === "string"
+        ? next.elevenLabsVoiceId
+        : undefined,
+    elevenLabsSfxOk:
+      next.elevenLabsSfxOk === true
+        ? true
+        : next.elevenLabsSfxOk === false
+          ? false
+          : undefined,
+    claudeModelId:
+      next.claudeModelId === "claude-haiku-5-5" ||
+      next.claudeModelId === "claude-sonnet-5-5"
+        ? next.claudeModelId
+        : "claude-sonnet-5-5",
+  };
+  const filePath = aiSecretsPath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, encodeAiSecretsPayload(payload));
+});
+
+handle("ai:anthropicStream", async (event, opts) => {
+  const streamId = assertString(opts?.streamId, "stream id");
+  const apiKey = assertString(opts?.apiKey, "api key");
+  const model = assertString(opts?.model, "model");
+  const system =
+    typeof opts?.system === "string" ? opts.system : "";
+  const messages = Array.isArray(opts?.messages) ? opts.messages : [];
+  const tools = Array.isArray(opts?.tools) ? opts.tools : undefined;
+
+  const existing = anthropicStreams.get(streamId);
+  if (existing) {
+    existing.abort();
+    anthropicStreams.delete(streamId);
+  }
+
+  const controller = new AbortController();
+  anthropicStreams.set(streamId, controller);
+
+  const send = (payload) => {
+    if (event.sender.isDestroyed()) return;
+    event.sender.send("ai:anthropic-event", payload);
+  };
+
+  try {
+    const body = {
+      model,
+      max_tokens: 4096,
+      stream: true,
+      system,
+      messages,
+    };
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+    }
+
+    const response = await net.fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch {
+        /* ignore */
+      }
+      send({
+        streamId,
+        type: "error",
+        error: `Anthropic HTTP ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}`,
+      });
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      send({ streamId, type: "error", error: "No response body" });
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    /** @type {Map<number, { id: string, name: string, inputJson: string }>} */
+    const toolBuilders = new Map();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === "message_start" && parsed.message?.usage) {
+            send({
+              streamId,
+              type: "usage",
+              usage: parsed.message.usage,
+            });
+          } else if (parsed.type === "message_delta" && parsed.usage) {
+            send({
+              streamId,
+              type: "usage",
+              usage: parsed.usage,
+            });
+          } else if (parsed.type === "content_block_start") {
+            const block = parsed.content_block;
+            const index =
+              typeof parsed.index === "number" ? parsed.index : -1;
+            if (block?.type === "tool_use" && index >= 0) {
+              toolBuilders.set(index, {
+                id: typeof block.id === "string" ? block.id : `tool_${index}`,
+                name:
+                  typeof block.name === "string" ? block.name : "unknown",
+                inputJson: "",
+              });
+            }
+          } else if (parsed.type === "content_block_delta") {
+            if (
+              parsed.delta?.type === "text_delta" &&
+              typeof parsed.delta.text === "string"
+            ) {
+              send({ streamId, type: "delta", text: parsed.delta.text });
+            } else if (
+              parsed.delta?.type === "input_json_delta" &&
+              typeof parsed.delta.partial_json === "string"
+            ) {
+              const index =
+                typeof parsed.index === "number" ? parsed.index : -1;
+              const builder = toolBuilders.get(index);
+              if (builder) builder.inputJson += parsed.delta.partial_json;
+            }
+          } else if (parsed.type === "content_block_stop") {
+            const index =
+              typeof parsed.index === "number" ? parsed.index : -1;
+            const builder = toolBuilders.get(index);
+            if (builder) {
+              let input = {};
+              try {
+                const parsedInput = JSON.parse(builder.inputJson || "{}");
+                if (
+                  parsedInput &&
+                  typeof parsedInput === "object" &&
+                  !Array.isArray(parsedInput)
+                ) {
+                  input = parsedInput;
+                }
+              } catch {
+                input = {};
+              }
+              send({
+                streamId,
+                type: "tool_use",
+                toolUse: {
+                  id: builder.id,
+                  name: builder.name,
+                  input,
+                },
+              });
+              toolBuilders.delete(index);
+            }
+          } else if (parsed.type === "error") {
+            send({
+              streamId,
+              type: "error",
+              error:
+                parsed.error?.message ||
+                parsed.message ||
+                "Anthropic stream error",
+            });
+            return;
+          }
+        } catch {
+          /* skip malformed SSE chunk */
+        }
+      }
+    }
+    send({ streamId, type: "done" });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      send({ streamId, type: "done" });
+      return;
+    }
+    send({
+      streamId,
+      type: "error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    anthropicStreams.delete(streamId);
+  }
+});
+
+handle("ai:anthropicAbort", async (_event, streamId) => {
+  const id = assertString(streamId, "stream id");
+  const controller = anthropicStreams.get(id);
+  if (controller) {
+    controller.abort();
+    anthropicStreams.delete(id);
+  }
+});
+
+/** Lightweight key check for AI settings Test button. */
+handle("ai:anthropicProbe", async (_event, opts) => {
+  const apiKey = assertString(opts?.apiKey, "api key");
+  try {
+    const response = await net.fetch(
+      "https://api.anthropic.com/v1/models?limit=1",
+      {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+      },
+    );
+    if (response.ok) return { ok: true };
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 240);
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: "Invalid API key" };
+    }
+    return {
+      ok: false,
+      error: detail
+        ? `Anthropic HTTP ${response.status}: ${detail}`
+        : `Anthropic HTTP ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 });
 
 app.whenReady().then(() => {

@@ -1,3 +1,4 @@
+import { buildClosedPath, ensureMinPoints } from "../geometry/vectorShape";
 import type {
   MaskBoolean,
   MaskType,
@@ -172,7 +173,7 @@ export function sampleMaskAlpha(
   ly: number,
   layoutScale = 1,
 ): number {
-  if (mask.type === "text") {
+  if (mask.type === "text" || mask.type === "custom") {
     return 0;
   }
   const d = maskSignedDistance(mask, lx, ly, layoutScale);
@@ -188,7 +189,12 @@ export function sampleMaskAlpha(
 }
 
 export function needsRasterMask(mask: ResolvedClipMask): boolean {
-  return mask.type === "text" || mask.type === "stars" || mask.type === "heart";
+  return (
+    mask.type === "text" ||
+    mask.type === "stars" ||
+    mask.type === "heart" ||
+    mask.type === "custom"
+  );
 }
 
 type Scratch2d = {
@@ -518,6 +524,14 @@ function drawMaskShape(
     }
     case "heart": {
       drawHeartPath(g, 0, 0, sizeW + exp * 2, sizeH + exp * 2);
+      g.fill();
+      break;
+    }
+    case "custom": {
+      const pts = ensureMinPoints(mask.points ?? []);
+      const scaleX = Math.max(0.5, sizeW / 2 + exp);
+      const scaleY = Math.max(0.5, sizeH / 2 + exp);
+      buildClosedPath(g, pts, scaleX, scaleY);
       g.fill();
       break;
     }

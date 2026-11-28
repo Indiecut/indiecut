@@ -11,6 +11,7 @@ export const PROJECT_SUBDIRS = [
   "exports",
   "filters",
   "cache",
+  "ai",
 ] as const;
 
 export const MEDIA_EXTENSIONS = [

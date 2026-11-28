@@ -595,3 +595,31 @@ export function IconRotate({ size = 14, className }: IconProps) {
     </Svg>
   );
 }
+
+export function IconChat({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path
+        d="M3.5 4.5h9a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H7l-2.5 2v-2h-1a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z"
+        {...s}
+      />
+    </Svg>
+  );
+}
+
+export function IconSend({ size = 14, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M8 12.5V3.5" {...s} />
+      <path d="M4.5 7 8 3.5 11.5 7" {...s} />
+    </Svg>
+  );
+}
+
+export function IconStop({ size = 14, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1" fill="currentColor" />
+    </Svg>
+  );
+}

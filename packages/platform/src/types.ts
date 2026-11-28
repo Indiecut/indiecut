@@ -80,6 +80,129 @@ export interface IndieCutCapabilities {
   revealInFolder: boolean;
   /** Open file with the OS default app (desktop only). */
   openLocalPath: boolean;
+  /**
+   * Cloud AI chat + Settings → AI (desktop Anthropic bridge).
+   * Omit / false on web — browser cannot call Anthropic (CORS).
+   */
+  cloudAi?: boolean;
+}
+
+/** Claude model allowlist ids. */
+export type ClaudeModelId = "claude-sonnet-5-5" | "claude-haiku-5-5";
+
+/** App-scoped AI secrets — never stored in project folders. */
+export type AiSecretsV1 = {
+  version: 1;
+  anthropicKey?: string;
+  geminiKey?: string;
+  elevenLabsKey?: string;
+  elevenLabsVoiceId?: string;
+  /**
+   * Last ElevenLabs sound-generation probe result.
+   * `false` disables the SFX skill even if an API key is present.
+   */
+  elevenLabsSfxOk?: boolean;
+  claudeModelId?: ClaudeModelId;
+};
+
+export interface IndieCutSecretsBridge {
+  getAiSecrets: () => Promise<AiSecretsV1 | null>;
+  setAiSecrets: (next: AiSecretsV1) => Promise<void>;
+}
+
+/** Anthropic Messages API content blocks (Phase 2 tool + vision). */
+export type AnthropicBridgeContent =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | {
+          type: "image";
+          source: {
+            type: "base64";
+            media_type: string;
+            data: string;
+          };
+        }
+      | {
+          type: "tool_use";
+          id: string;
+          name: string;
+          input: Record<string, unknown>;
+        }
+      | {
+          type: "tool_result";
+          tool_use_id: string;
+          content:
+            | string
+            | Array<
+                | { type: "text"; text: string }
+                | {
+                    type: "image";
+                    source: {
+                      type: "base64";
+                      media_type: string;
+                      data: string;
+                    };
+                  }
+              >;
+          is_error?: boolean;
+        }
+    >;
+
+/**
+ * Optional Anthropic streaming proxy (desktop). Avoids browser CORS;
+ * web may omit and use renderer fetch.
+ */
+export type IndieCutAiStreamUsage = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
+
+export type IndieCutAiStreamEvent = {
+  streamId: string;
+  type: "delta" | "tool_use" | "usage" | "done" | "error";
+  text?: string;
+  error?: string;
+  toolUse?: {
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+  };
+  usage?: IndieCutAiStreamUsage;
+};
+
+export interface IndieCutAiBridge {
+  streamAnthropic: (opts: {
+    streamId: string;
+    apiKey: string;
+    model: string;
+    system: string;
+    messages: Array<{
+      role: "user" | "assistant";
+      content: AnthropicBridgeContent;
+    }>;
+    tools?: Array<{
+      name: string;
+      description: string;
+      input_schema: Record<string, unknown>;
+    }>;
+  }) => Promise<void>;
+  abortAnthropic: (streamId: string) => Promise<void>;
+  /** Lightweight API-key check (desktop; avoids CORS). */
+  probeAnthropic?: (opts: {
+    apiKey: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  onAnthropicEvent: (
+    listener: (event: IndieCutAiStreamEvent) => void,
+  ) => () => void;
+}
+
+/** Desktop window chrome helpers (Electron). */
+export interface IndieCutWindowBridge {
+  isFullScreen: () => Promise<boolean>;
+  onFullScreenChange: (listener: (fullScreen: boolean) => void) => () => void;
 }
 
 export interface IndieCutBridge {
@@ -90,5 +213,8 @@ export interface IndieCutBridge {
   fs: IndieCutFsBridge;
   power?: IndieCutPowerBridge;
   capabilities?: IndieCutCapabilities;
+  secrets?: IndieCutSecretsBridge;
+  ai?: IndieCutAiBridge;
+  window?: IndieCutWindowBridge;
   getPathForFile: (file: File) => string;
 }

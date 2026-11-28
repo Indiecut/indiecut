@@ -1,4 +1,19 @@
-import type { TextBubbleProps, TextProps } from "../project/types";
+import {
+  ensureMinPoints,
+  pointsFingerprint,
+  presetPoints,
+} from "../geometry/vectorShape";
+import type {
+  TextBubbleProps,
+  TextProps,
+  VectorShapePoint,
+} from "../project/types";
+import { normalizeTextProps } from "../text/runs";
+import {
+  measureRichTextSize,
+  rasterizeRichText,
+  shouldUseRichTextPath,
+} from "./richTextLayout";
 
 export type RasterizedText = {
   canvas: OffscreenCanvas;
@@ -9,8 +24,75 @@ export type RasterizedText = {
   logicalHeight: number;
 };
 
-/** Tight pad so selection chrome hugs glyphs. */
-const PAD = 4;
+/** Tight pad so selection chrome hugs glyphs (extra room for stroke/descenders). */
+const PAD = 6;
+
+/**
+ * Sample that includes ascenders + descenders so line boxes reserve room for
+ * tails (y/g/p/q) even when the real line is caps-only.
+ */
+export const TEXT_METRICS_PROBE = "Mgypq";
+
+export type GlyphVertMetrics = { ascent: number; descent: number };
+
+type MetricsCtx = {
+  measureText: (text: string) => TextMetrics;
+  textBaseline: CanvasTextBaseline;
+};
+
+/**
+ * Vertical metrics for `textBaseline = "top"` (measure + draw must match).
+ * With top baseline, ink lives mostly in [0, descent]; ascent is usually ~0.
+ * We still keep an alphabetic-style pair for underline / line-box helpers:
+ * ascent ≈ body above the visual baseline, descent ≈ tails below it.
+ */
+export function readGlyphVertMetrics(
+  ctx: MetricsCtx,
+  sample: string,
+  fontSize: number,
+): GlyphVertMetrics {
+  const prev = ctx.textBaseline;
+  // Bound boxes are relative to the active textBaseline — lock to "top"
+  // so height matches paintTextLine (also top).
+  ctx.textBaseline = "top";
+  try {
+    const primary = ctx.measureText(sample.trim() ? sample : "M");
+    const probe = ctx.measureText(TEXT_METRICS_PROBE);
+    const inkHeight = (m: TextMetrics): number => {
+      const fontH =
+        (typeof m.fontBoundingBoxAscent === "number" &&
+        m.fontBoundingBoxAscent > 0
+          ? m.fontBoundingBoxAscent
+          : 0) +
+        (typeof m.fontBoundingBoxDescent === "number" &&
+        m.fontBoundingBoxDescent > 0
+          ? m.fontBoundingBoxDescent
+          : 0);
+      const actualH =
+        (typeof m.actualBoundingBoxAscent === "number" &&
+        m.actualBoundingBoxAscent > 0
+          ? m.actualBoundingBoxAscent
+          : 0) +
+        (typeof m.actualBoundingBoxDescent === "number" &&
+        m.actualBoundingBoxDescent > 0
+          ? m.actualBoundingBoxDescent
+          : 0);
+      return Math.max(fontH, actualH);
+    };
+    // Full ink from the top alignment point down (includes descenders).
+    const topExtent = Math.max(
+      fontSize * 1.15,
+      inkHeight(primary),
+      inkHeight(probe),
+    );
+    // Split into ascent/descent for underline helpers (≈ body / tail).
+    const ascent = Math.max(fontSize * 0.8, topExtent * 0.72);
+    const descent = Math.max(fontSize * 0.3, topExtent - ascent);
+    return { ascent, descent };
+  } finally {
+    ctx.textBaseline = prev;
+  }
+}
 
 /** Default weight — matches pre-Step-1 hardcoded paint. */
 export const DEFAULT_TEXT_FONT_WEIGHT = 600;
@@ -34,8 +116,12 @@ export type ResolvedBubble = {
   paddingX: number;
   paddingY: number;
   accentColor?: string;
+  /** Shape chrome opacity 0–1. */
+  opacity: number;
   /** Extra height below bubble for speech tail (device px). */
   tailH: number;
+  /** Custom closed polygon in ±0.5 space (type === "custom"). */
+  points?: VectorShapePoint[];
 };
 
 export type ResolvedTextPaint = {
@@ -44,7 +130,7 @@ export type ResolvedTextPaint = {
   fontSize: number;
   fontWeight: number | string;
   fontStyle: "normal" | "italic";
-  textDecoration: "none" | "underline";
+  textDecoration: "none" | "underline" | "line-through";
   color: string;
   /** Parsed CSS linear-gradient; null = flat color fill. */
   gradient: ParsedLinearGradient | null;
@@ -130,7 +216,7 @@ export function formatLinearGradientCss(
   return `linear-gradient(${Math.round(angleDeg)}deg, ${from} 0%, ${to} 100%)`;
 }
 
-function createFillGradient(
+export function createFillGradient(
   ctx: Ctx2d,
   g: ParsedLinearGradient,
   x: number,
@@ -184,6 +270,19 @@ function resolveBubble(
       : type === "thought-cloud"
         ? Math.ceil(SPEECH_TAIL_H * 1.4 * pr)
         : 0;
+  const opacityRaw = b.opacity;
+  const opacity =
+    typeof opacityRaw === "number" && Number.isFinite(opacityRaw)
+      ? Math.min(1, Math.max(0, opacityRaw))
+      : 1;
+  const points =
+    type === "custom"
+      ? ensureMinPoints(
+          b.points && b.points.length >= 3
+            ? b.points
+            : presetPoints("star"),
+        )
+      : undefined;
   return {
     type,
     fill: b.fill || "#ffffff",
@@ -192,17 +291,58 @@ function resolveBubble(
     paddingX: Math.max(0, (b.paddingX ?? 12) * pr),
     paddingY: Math.max(0, (b.paddingY ?? 8) * pr),
     accentColor: b.accentColor,
+    opacity,
     tailH,
+    points,
+  };
+}
+
+/**
+ * Extra canvas inset so burst/star spikes (drawn past the padded text AABB)
+ * are not clipped by the OffscreenCanvas / selection box.
+ */
+export function bubbleSpikePad(
+  bubble: ResolvedBubble,
+  contentW: number,
+  contentH: number,
+): { padX: number; padY: number } {
+  if (bubble.type !== "comic-burst" && bubble.type !== "star-badge") {
+    return { padX: 0, padY: 0 };
+  }
+  const w = Math.max(1, contentW);
+  const h = Math.max(1, contentH);
+  const halfDiag = Math.sqrt(w * w + h * h) / 2;
+  const outer = halfDiag * (bubble.type === "star-badge" ? 1.28 : 1.22);
+  const strokeOut = bubble.strokeWidth / 2;
+  return {
+    padX: Math.max(0, Math.ceil(outer - w / 2 + strokeOut)),
+    padY: Math.max(0, Math.ceil(outer - h / 2 + strokeOut)),
   };
 }
 
 /** Content origin inset (device px) from canvas top-left to glyph top-left. */
-export function contentInsets(t: ResolvedTextPaint): { x: number; y: number } {
+export function contentInsets(
+  t: ResolvedTextPaint,
+  bubbleContent?: { w: number; h: number },
+): { x: number; y: number } {
   const bx = t.bubble ? t.bubble.paddingX + t.bubble.strokeWidth / 2 : 0;
   const by = t.bubble ? t.bubble.paddingY + t.bubble.strokeWidth / 2 : 0;
+  let spikeX = 0;
+  let spikeY = 0;
+  if (t.bubble) {
+    const cw =
+      bubbleContent?.w ??
+      t.bubble.paddingX * 2 + Math.max(t.fontSize * 2, 32 * t.pr);
+    const ch =
+      bubbleContent?.h ??
+      t.bubble.paddingY * 2 + t.bubble.tailH + Math.max(t.fontSize, 24 * t.pr);
+    const spike = bubbleSpikePad(t.bubble, cw, ch);
+    spikeX = spike.padX;
+    spikeY = spike.padY;
+  }
   return {
-    x: t.pad + t.strokeWidth + bx,
-    y: t.pad + t.strokeWidth + by,
+    x: t.pad + t.strokeWidth + bx + spikeX,
+    y: t.pad + t.strokeWidth + by + spikeY,
   };
 }
 
@@ -219,9 +359,9 @@ export function resolveText(props: TextProps, pixelRatio = 1): ResolvedTextPaint
   const retro3DDepth = retro3DColor ? Math.ceil(RETRO_3D_DEPTH * pr) : 0;
   const bubble = resolveBubble(props, pr);
   const neonGlowPad =
-    bubble?.type === "neon-frame" || bubble?.type === "star-badge"
+    bubble?.type === "neon-frame"
       ? Math.ceil(Math.max(bubble.strokeWidth * 2, 8 * pr))
-      : bubble?.type === "comic-burst" || bubble?.type === "hexagon"
+      : bubble?.type === "hexagon"
         ? Math.ceil(10 * pr)
         : 0;
   const effectPad = Math.max(
@@ -236,15 +376,20 @@ export function resolveText(props: TextProps, pixelRatio = 1): ResolvedTextPaint
     retro3DDepth + (retro3DDepth > 0 ? Math.ceil(2 * pr) : 0),
     neonGlowPad,
   );
-  const underline =
-    (props.textDecoration ?? "none") === "underline";
+  const deco = props.textDecoration ?? "none";
+  const underline = deco === "underline";
   return {
     content: applyTextTransform(props.content || "", props.textTransform),
     fontFamily: props.fontFamily || "system-ui, sans-serif",
     fontSize: Math.max(8, (props.fontSize ?? 48) * pr),
     fontWeight: props.fontWeight ?? DEFAULT_TEXT_FONT_WEIGHT,
     fontStyle: props.fontStyle === "italic" ? "italic" : "normal",
-    textDecoration: underline ? "underline" : "none",
+    textDecoration:
+      deco === "underline"
+        ? "underline"
+        : deco === "line-through"
+          ? "line-through"
+          : "none",
     color: props.color || "#ffffff",
     gradient: parseLinearGradientCss(props.gradient),
     align: props.align || "center",
@@ -590,19 +735,39 @@ export function paintBubble(
   bubble: ResolvedBubble,
 ): void {
   if (bubble.type === "none") return;
-  const { x, y, w, h } = rect;
-  if (w <= 0 || h <= 0) return;
+  if (rect.w <= 0 || rect.h <= 0) return;
+  if (bubble.opacity <= 0) return;
 
   clearShadow(ctx);
+  const prevAlpha = ctx.globalAlpha;
+  if (bubble.opacity < 1) {
+    ctx.globalAlpha = prevAlpha * bubble.opacity;
+  }
+  try {
+    paintBubbleChrome(ctx, rect, bubble);
+  } finally {
+    ctx.globalAlpha = prevAlpha;
+  }
+}
+
+function paintBubbleChrome(
+  ctx: Ctx2d,
+  rect: { x: number; y: number; w: number; h: number },
+  bubble: ResolvedBubble,
+): void {
+  const { x, y, w, h } = rect;
   const type = bubble.type;
 
   if (type === "comic-burst" || type === "star-badge") {
     const cx = x + w / 2;
     const cy = y + h / 2;
-    const inner = Math.sqrt(w * w + h * h) / 2;
-    const outer = inner * (type === "star-badge" ? 1.28 : 1.22);
-    burstPath(ctx, cx, cy, inner * 0.9, outer, type === "star-badge" ? 8 : 14);
-    fillStrokePath(ctx, bubble);
+    const halfDiag = Math.sqrt(w * w + h * h) / 2;
+    const outer = halfDiag * (type === "star-badge" ? 1.28 : 1.22);
+    // Star: deeper notches so it reads as a badge, not a spiky circle.
+    // Burst: shallower notches for a denser comic explosion.
+    const innerR = outer * (type === "star-badge" ? 0.42 : 0.62);
+    burstPath(ctx, cx, cy, innerR, outer, type === "star-badge" ? 5 : 14);
+    fillStrokePath(ctx, bubble, { join: "round" });
     return;
   }
 
@@ -662,6 +827,20 @@ export function paintBubble(
       ctx.arc(x + w * 0.2 + i * dot * 2.4, baseY, dot, 0, Math.PI * 2);
       ctx.fill();
     }
+    return;
+  }
+
+  if (type === "custom") {
+    const pts = ensureMinPoints(bubble.points ?? presetPoints("star"));
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + pts[0]!.x * w, cy + pts[0]!.y * h);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(cx + pts[i]!.x * w, cy + pts[i]!.y * h);
+    }
+    ctx.closePath();
+    fillStrokePath(ctx, bubble);
     return;
   }
 
@@ -748,41 +927,61 @@ export function paintBubble(
 
   if (type === "thought-cloud") {
     const bodyH = Math.max(1, h - bubble.tailH);
-    // Canvas ellipse union via multiple fills
-    ctx.fillStyle = bubble.fill;
-    const cy = y + bodyH * 0.55;
+    // Classic cloud: large body + top/side puffs. Keep extents inside the rect
+    // so the selection box hugs the silhouette.
     const blobs: Array<[number, number, number, number]> = [
-      [x + w * 0.28, cy, w * 0.22, bodyH * 0.38],
-      [x + w * 0.5, y + bodyH * 0.42, w * 0.3, bodyH * 0.42],
-      [x + w * 0.72, cy, w * 0.24, bodyH * 0.36],
-      [x + w * 0.5, y + bodyH * 0.7, w * 0.34, bodyH * 0.32],
+      [x + w * 0.5, y + bodyH * 0.58, w * 0.4, bodyH * 0.36],
+      [x + w * 0.26, y + bodyH * 0.42, w * 0.2, bodyH * 0.28],
+      [x + w * 0.5, y + bodyH * 0.34, w * 0.24, bodyH * 0.28],
+      [x + w * 0.74, y + bodyH * 0.42, w * 0.2, bodyH * 0.28],
+      [x + w * 0.18, y + bodyH * 0.62, w * 0.14, bodyH * 0.26],
+      [x + w * 0.82, y + bodyH * 0.62, w * 0.14, bodyH * 0.26],
+      [x + w * 0.38, y + bodyH * 0.72, w * 0.2, bodyH * 0.22],
+      [x + w * 0.62, y + bodyH * 0.72, w * 0.2, bodyH * 0.22],
     ];
+    // Stroke-under-fill: inflate blobs with stroke color, then fill — avoids
+    // ugly internal stroke seams where ellipses overlap.
+    const sw = bubble.strokeWidth;
+    if (sw > 0) {
+      ctx.fillStyle = bubble.stroke;
+      for (const [bx, by, rx, ry] of blobs) {
+        ctx.beginPath();
+        ctx.ellipse(bx, by, rx + sw / 2, ry + sw / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = bubble.fill;
     for (const [bx, by, rx, ry] of blobs) {
       ctx.beginPath();
       ctx.ellipse(bx, by, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (bubble.strokeWidth > 0) {
-        ctx.lineWidth = bubble.strokeWidth;
-        ctx.strokeStyle = bubble.stroke;
-        ctx.stroke();
-      }
     }
     if (bubble.tailH > 0) {
+      const base = Math.max(2, Math.min(w, bodyH) * 0.06);
       const dots = [
-        { cx: x + w * 0.3, cy: y + bodyH + bubble.tailH * 0.25, r: 4 },
-        { cx: x + w * 0.22, cy: y + bodyH + bubble.tailH * 0.55, r: 3 },
-        { cx: x + w * 0.16, cy: y + bodyH + bubble.tailH * 0.85, r: 2 },
+        { cx: x + w * 0.28, cy: y + bodyH + bubble.tailH * 0.22, r: base },
+        {
+          cx: x + w * 0.2,
+          cy: y + bodyH + bubble.tailH * 0.52,
+          r: base * 0.72,
+        },
+        {
+          cx: x + w * 0.14,
+          cy: y + bodyH + bubble.tailH * 0.82,
+          r: base * 0.48,
+        },
       ];
       for (const d of dots) {
+        if (sw > 0) {
+          ctx.beginPath();
+          ctx.arc(d.cx, d.cy, d.r + sw * 0.35, 0, Math.PI * 2);
+          ctx.fillStyle = bubble.stroke;
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(d.cx, d.cy, d.r, 0, Math.PI * 2);
         ctx.fillStyle = bubble.fill;
         ctx.fill();
-        if (bubble.strokeWidth > 0) {
-          ctx.lineWidth = Math.max(1, bubble.strokeWidth * 0.7);
-          ctx.strokeStyle = bubble.stroke;
-          ctx.stroke();
-        }
       }
     }
     return;
@@ -813,7 +1012,9 @@ export function bubbleRectForText(
   t: ResolvedTextPaint,
 ): { x: number; y: number; w: number; h: number } | null {
   if (!t.bubble) return null;
-  const inset = contentInsets(t);
+  const contentW = maxW + t.bubble.paddingX * 2;
+  const contentH = textH + t.bubble.paddingY * 2 + t.bubble.tailH;
+  const inset = contentInsets(t, { w: contentW, h: contentH });
   let textLeft: number;
   if (t.align === "left") textLeft = inset.x;
   else if (t.align === "right") textLeft = fullW - inset.x - maxW;
@@ -822,8 +1023,8 @@ export function bubbleRectForText(
   return {
     x: textLeft - t.bubble.paddingX,
     y: textTop - t.bubble.paddingY,
-    w: maxW + t.bubble.paddingX * 2,
-    h: textH + t.bubble.paddingY * 2 + t.bubble.tailH,
+    w: contentW,
+    h: contentH,
   };
 }
 
@@ -854,28 +1055,36 @@ export function textPropsFingerprint(
   pixelRatio = 1,
 ): string {
   if (!props) return "";
-  const t = resolveText(props, 1);
-  const b = props.bubble;
+  const normalized = normalizeTextProps(props);
+  const t = resolveText(normalized, 1);
+  const b = normalized.bubble;
+  const runsKey = (normalized.runs ?? [])
+    .map(
+      (r) =>
+        `${r.text}\u001f${r.style ? JSON.stringify(r.style) : ""}`,
+    )
+    .join("\u001e");
   return [
     t.content,
+    runsKey,
     t.fontFamily,
-    props.fontSize ?? 48,
+    normalized.fontSize ?? 48,
     t.fontWeight,
     t.fontStyle,
     t.textDecoration,
-    props.textTransform ?? "none",
+    normalized.textTransform ?? "none",
     t.color,
-    props.gradient ?? "",
+    normalized.gradient ?? "",
     t.align,
     t.letterSpacing,
     t.lineHeightMul ?? "",
     t.strokeColor,
-    props.strokeWidth ?? 0,
+    normalized.strokeWidth ?? 0,
     t.shadow ? 1 : 0,
     t.shadowColor,
-    props.shadowBlur ?? 0,
-    props.shadowOffsetX ?? 0,
-    props.shadowOffsetY ?? 0,
+    normalized.shadowBlur ?? 0,
+    normalized.shadowOffsetX ?? 0,
+    normalized.shadowOffsetY ?? 0,
     t.retro3DColor ?? "",
     b?.type ?? "",
     b?.fill ?? "",
@@ -884,6 +1093,10 @@ export function textPropsFingerprint(
     b?.paddingX ?? "",
     b?.paddingY ?? "",
     b?.accentColor ?? "",
+    b?.opacity ?? 1,
+    // Custom seeds / AI pathD only change geometry — must bust raster cache.
+    pointsFingerprint(b?.points),
+    b?.pathD ?? "",
     pixelRatio.toFixed(3),
   ].join("|");
 }
@@ -899,7 +1112,11 @@ function measureTextSizeAt(
   props: TextProps,
   pixelRatio: number,
 ): { width: number; height: number } | null {
-  const t = resolveText(props, pixelRatio);
+  const normalized = normalizeTextProps(props);
+  if (shouldUseRichTextPath(normalized)) {
+    return measureRichTextSize(normalized, pixelRatio);
+  }
+  const t = resolveText(normalized, pixelRatio);
   if (!t.content.trim()) return null;
 
   // Prefer a document canvas on the main thread so measureText sees
@@ -919,18 +1136,15 @@ function measureTextSizeAt(
   if (!mctx) return null;
 
   mctx.font = textFontCss(t);
+  mctx.textBaseline = "top";
   const lines = t.content.split("\n");
   let ascent = t.fontSize * 0.8;
-  let descent = t.fontSize * 0.25;
+  let descent = t.fontSize * 0.3;
   let maxW = 0;
   for (const line of lines) {
-    const metrics = mctx.measureText(line || "M");
-    if (metrics.actualBoundingBoxAscent > 0) {
-      ascent = Math.max(ascent, metrics.actualBoundingBoxAscent);
-    }
-    if (metrics.actualBoundingBoxDescent > 0) {
-      descent = Math.max(descent, metrics.actualBoundingBoxDescent);
-    }
+    const metrics = readGlyphVertMetrics(mctx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
     maxW = Math.max(maxW, measureLineWidth(mctx, line, t.letterSpacing));
   }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
@@ -938,25 +1152,36 @@ function measureTextSizeAt(
   // lineJoin "round" can ink past a centered stroke by ~0.5× width at bends.
   const strokePad =
     t.strokeWidth > 0 ? Math.ceil(t.strokeWidth * 2.5) : 0;
+  const textH = lines.length * lineHeight;
   const bubblePadW = t.bubble
     ? t.bubble.paddingX * 2 + t.bubble.strokeWidth
     : 0;
   const bubblePadH = t.bubble
     ? t.bubble.paddingY * 2 + t.bubble.strokeWidth + t.bubble.tailH
     : 0;
+  const spike = t.bubble
+    ? bubbleSpikePad(
+        t.bubble,
+        maxW + t.bubble.paddingX * 2,
+        textH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      )
+    : { padX: 0, padY: 0 };
   const width = Math.max(
     2,
-    Math.ceil(maxW + t.pad * 2 + strokePad + t.shadowPad + bubblePadW),
+    Math.ceil(
+      maxW + t.pad * 2 + strokePad + t.shadowPad + bubblePadW + spike.padX * 2,
+    ),
   );
   const height = Math.max(
     2,
     Math.ceil(
-      lines.length * lineHeight +
+      textH +
         t.pad * 2 +
         strokePad +
         t.shadowPad +
         t.underlinePad +
-        bubblePadH,
+        bubblePadH +
+        spike.padY * 2,
     ),
   );
   return { width, height };
@@ -970,35 +1195,44 @@ export function rasterizeText(
   props: TextProps,
   pixelRatio = 1,
 ): RasterizedText | null {
-  const logical = measureTextSizeAt(props, 1);
+  const normalized = normalizeTextProps(props);
+  if (shouldUseRichTextPath(normalized)) {
+    return rasterizeRichText(normalized, pixelRatio);
+  }
+
+  const logical = measureTextSizeAt(normalized, 1);
   if (!logical) return null;
 
-  const t = resolveText(props, pixelRatio);
-  const size = measureTextSizeAt(props, pixelRatio);
+  const t = resolveText(normalized, pixelRatio);
+  const size = measureTextSizeAt(normalized, pixelRatio);
   if (!size) return null;
   let { width, height } = size;
   const lines = t.content.split("\n");
 
   const mctxFont = textFontCss(t);
+  // Prefer document canvas (same as measureTextSizeAt) so FontFaces + metrics
+  // match the bitmap size — OffscreenCanvas often reports different boxes.
   const probe =
-    typeof OffscreenCanvas !== "undefined"
-      ? new OffscreenCanvas(1, 1)
-      : document.createElement("canvas");
+    typeof document !== "undefined"
+      ? document.createElement("canvas")
+      : typeof OffscreenCanvas !== "undefined"
+        ? new OffscreenCanvas(1, 1)
+        : null;
+  if (!probe) return null;
   const probeCtx = probe.getContext("2d") as
     | OffscreenCanvasRenderingContext2D
     | CanvasRenderingContext2D
     | null;
   if (!probeCtx) return null;
   probeCtx.font = mctxFont;
-  const metrics0 = probeCtx.measureText(lines[0] || "M");
-  const ascent =
-    metrics0.actualBoundingBoxAscent > 0
-      ? metrics0.actualBoundingBoxAscent
-      : t.fontSize * 0.8;
-  const descent =
-    metrics0.actualBoundingBoxDescent > 0
-      ? metrics0.actualBoundingBoxDescent
-      : t.fontSize * 0.25;
+  probeCtx.textBaseline = "top";
+  let ascent = t.fontSize * 0.8;
+  let descent = t.fontSize * 0.3;
+  for (const line of lines) {
+    const metrics = readGlyphVertMetrics(probeCtx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
+  }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
 
   const maxDim = 8192;
@@ -1016,6 +1250,7 @@ export function rasterizeText(
   if (drawScale !== 1) ctx.scale(drawScale, drawScale);
 
   ctx.font = mctxFont;
+  // Measure + paint both use top so descenders fit the sized bitmap.
   ctx.textBaseline = "top";
   ctx.textAlign = t.letterSpacing ? "left" : t.align;
   ctx.imageSmoothingEnabled = true;
@@ -1024,18 +1259,24 @@ export function rasterizeText(
   }
 
   const fullW = size.width;
-  const inset = contentInsets(t);
-  let x = fullW / 2;
-  if (t.align === "left") x = inset.x;
-  else if (t.align === "right") x = fullW - inset.x;
-
-  let y = inset.y;
   const textH = lines.length * lineHeight;
 
   let maxW = 0;
   for (const line of lines) {
     maxW = Math.max(maxW, measureLineWidth(ctx, line, t.letterSpacing));
   }
+  const bubbleContent = t.bubble
+    ? {
+        w: maxW + t.bubble.paddingX * 2,
+        h: textH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      }
+    : undefined;
+  const inset = contentInsets(t, bubbleContent);
+  let x = fullW / 2;
+  if (t.align === "left") x = inset.x;
+  else if (t.align === "right") x = fullW - inset.x;
+
+  let y = inset.y;
   if (t.bubble) {
     const rect = bubbleRectForText(fullW, maxW, textH, t);
     if (rect) paintBubble(ctx, rect, t.bubble);

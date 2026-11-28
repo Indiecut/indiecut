@@ -4,6 +4,7 @@ import type {
   KineticRenderOptions,
 } from "./kinetic";
 import type { StickerStyleParams } from "../project/types";
+import { shapeStickerFingerprint } from "./shapeStickerSvg";
 
 export const DEFAULT_STICKER_PALETTE: KineticPaletteKey = "vibrant";
 export const DEFAULT_STICKER_BACKING: KineticBacking = "diecut";
@@ -19,8 +20,12 @@ export function defaultStickerStyle(): StickerStyleParams {
 
 export function stickerStyleFingerprint(
   style?: StickerStyleParams | null,
+  stickerId?: string | null,
 ): string {
   if (!style) return "default";
+  if (stickerId === "shape" || style.shapePreset || style.points) {
+    return `shape\0${shapeStickerFingerprint(style)}`;
+  }
   return [
     style.paletteKey ?? DEFAULT_STICKER_PALETTE,
     style.backingMode ?? DEFAULT_STICKER_BACKING,
@@ -37,7 +42,7 @@ export function stickerAssetId(
     typeof rasterSize === "number" && rasterSize > 0
       ? `@${Math.round(rasterSize)}`
       : "";
-  return `sticker:${stickerId}:${stickerStyleFingerprint(style)}${sizePart}`;
+  return `sticker:${stickerId}:${stickerStyleFingerprint(style, stickerId)}${sizePart}`;
 }
 
 export function toKineticRenderOptions(

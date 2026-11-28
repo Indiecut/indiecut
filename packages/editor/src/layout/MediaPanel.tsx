@@ -52,6 +52,8 @@ import {
   type StickerManifestEntry,
 } from "../stickers/manifest";
 import { stickerThumbDataUrl } from "../stickers/rasterizeSvg";
+import { defaultShapeStickerStyle } from "../stickers/shapeStickerSvg";
+import { SHAPE_STICKER_ID } from "../project/types";
 import { useEditorStore } from "../store/editorStore";
 import {
   loadTextTemplateManifest,
@@ -467,28 +469,39 @@ function MediaContextMenu({
 
 function templateSampleStyle(entry: TextTemplateEntry): CSSProperties {
   const r = entry.recipe;
-  const strokeW = r.strokeWidth ?? 0;
+  const first = entry.defaultRuns?.[0]?.style;
+  const strokeW = first?.strokeWidth ?? r.strokeWidth ?? 0;
   const blur = r.shadowBlur ?? 0;
   const ox = r.shadowOffsetX ?? 0;
   const oy = r.shadowOffsetY ?? 0;
   const shadowColor = r.shadowColor ?? "transparent";
   const bubble = r.bubble;
   const chromeOn = Boolean(bubble && bubble.type && bubble.type !== "none");
+  const color = first?.color ?? r.color ?? "#ffffff";
   return {
-    color: r.color ?? "#ffffff",
-    fontFamily: r.fontFamily,
-    fontWeight: (r.fontWeight as CSSProperties["fontWeight"]) ?? 700,
-    fontStyle: r.fontStyle ?? "normal",
+    color: color === "transparent" ? (first?.strokeColor ?? "#fff") : color,
+    fontFamily: first?.fontFamily ?? r.fontFamily,
+    fontWeight:
+      ((first?.fontWeight ?? r.fontWeight) as CSSProperties["fontWeight"]) ??
+      700,
+    fontStyle: first?.fontStyle ?? r.fontStyle ?? "normal",
     letterSpacing: r.letterSpacing != null ? `${r.letterSpacing}px` : undefined,
+    backgroundImage: first?.gradient ?? undefined,
+    WebkitBackgroundClip: first?.gradient ? "text" : undefined,
+    backgroundClip: first?.gradient ? "text" : undefined,
     WebkitTextStroke:
       strokeW > 0
-        ? `${Math.min(2, strokeW * 0.4)}px ${r.strokeColor ?? "#000000"}`
+        ? `${Math.min(2, strokeW * 0.4)}px ${first?.strokeColor ?? r.strokeColor ?? "#000000"}`
         : undefined,
     textShadow:
       blur > 0 || ox !== 0 || oy !== 0
         ? `${ox * 0.4}px ${oy * 0.4}px ${Math.min(10, blur * 0.5)}px ${shadowColor}`
         : undefined,
-    background: chromeOn ? bubble?.fill : undefined,
+    backgroundColor: first?.highlight
+      ? first.highlight
+      : chromeOn
+        ? bubble?.fill
+        : undefined,
     border:
       chromeOn && (bubble?.strokeWidth ?? 0) > 0
         ? `${Math.min(2, bubble?.strokeWidth ?? 1)}px solid ${bubble?.stroke ?? "#000"}`
@@ -503,7 +516,7 @@ function templateSampleStyle(entry: TextTemplateEntry): CSSProperties {
             : chromeOn
               ? 6
               : undefined,
-    padding: chromeOn ? "6px 10px" : undefined,
+    padding: chromeOn || first?.highlight ? "6px 10px" : undefined,
     boxShadow:
       bubble?.type === "neon-frame"
         ? `0 0 10px ${bubble.stroke}`
@@ -727,7 +740,7 @@ function TextTemplateCard({ entry }: { entry: TextTemplateEntry }) {
 function StickersLibrary() {
   const [stickers, setStickers] = useState<StickerManifestEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [group, setGroup] = useState("social");
+  const [group, setGroup] = useState("shapes");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -738,7 +751,7 @@ function StickersLibrary() {
         if (cancelled) return;
         setStickers(manifest.stickers);
         const groups = stickerGroupsFromManifest(manifest.stickers);
-        if (groups.length > 0 && !groups.some((g) => g.id === "social")) {
+        if (groups.length > 0 && !groups.some((g) => g.id === "shapes")) {
           setGroup(groups[0]!.id);
         }
       } catch (err) {
@@ -813,8 +826,20 @@ function StickersLibrary() {
 }
 
 function StickerCard({ entry }: { entry: StickerManifestEntry }) {
+  const isShape =
+    entry.group === "shapes" || entry.id.startsWith(`${SHAPE_STICKER_ID}:`);
+  const shapePreset = isShape
+    ? (entry.template as Parameters<typeof defaultShapeStickerStyle>[0])
+    : null;
+  const thumbStyle = shapePreset
+    ? defaultShapeStickerStyle(shapePreset)
+    : null;
   const add = () => {
-    void addStickerToTimeline(entry.id);
+    void addStickerToTimeline(
+      isShape ? SHAPE_STICKER_ID : entry.id,
+      undefined,
+      thumbStyle ?? undefined,
+    );
   };
   return (
     <div
@@ -831,13 +856,20 @@ function StickerCard({ entry }: { entry: StickerManifestEntry }) {
         }
       }}
       onDragStart={(e) => {
-        e.dataTransfer.setData(STICKER_DRAG_MIME, entry.id);
+        e.dataTransfer.setData(
+          STICKER_DRAG_MIME,
+          isShape ? `${SHAPE_STICKER_ID}:${entry.template}` : entry.id,
+        );
         e.dataTransfer.effectAllowed = "copy";
       }}
     >
       <div className="media-card__thumb media-card__thumb--sticker">
         <img
-          src={stickerThumbDataUrl(entry.id, 128)}
+          src={stickerThumbDataUrl(
+            isShape ? SHAPE_STICKER_ID : entry.id,
+            128,
+            thumbStyle,
+          )}
           alt=""
           loading="lazy"
           decoding="async"

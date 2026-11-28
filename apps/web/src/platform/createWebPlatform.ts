@@ -1,4 +1,5 @@
-import type { IndieCutBridge } from "@indiecut/platform";
+import type { AiSecretsV1, IndieCutBridge } from "@indiecut/platform";
+import localforage from "localforage";
 import { forgetBlob, hasBlob, readBlobBytes, registerBlob } from "./blobStore";
 import {
   downloadOrSavePath,
@@ -23,8 +24,43 @@ import {
 import { isBlobPath, isOpfsPath, MEDIA_EXTENSIONS, safeName } from "./paths";
 
 const EXPORT_FOLDER = "opfs:/exports";
+const AI_SECRETS_KEY = "ai_secrets_v1";
+
+const aiSecretsStore = localforage.createInstance({
+  name: "indiecut",
+  storeName: "ai_secrets",
+  description: "IndieCut AI API keys (device-local)",
+});
 
 let wakeLock: WakeLockSentinel | null = null;
+
+function normalizeAiSecrets(raw: unknown): AiSecretsV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.version !== 1) return null;
+  const claudeModelId =
+    o.claudeModelId === "claude-haiku-5-5" ||
+    o.claudeModelId === "claude-sonnet-5-5"
+      ? o.claudeModelId
+      : "claude-sonnet-5-5";
+  const elevenLabsSfxOk =
+    o.elevenLabsSfxOk === true
+      ? true
+      : o.elevenLabsSfxOk === false
+        ? false
+        : undefined;
+  return {
+    version: 1,
+    anthropicKey: typeof o.anthropicKey === "string" ? o.anthropicKey : undefined,
+    geminiKey: typeof o.geminiKey === "string" ? o.geminiKey : undefined,
+    elevenLabsKey:
+      typeof o.elevenLabsKey === "string" ? o.elevenLabsKey : undefined,
+    elevenLabsVoiceId:
+      typeof o.elevenLabsVoiceId === "string" ? o.elevenLabsVoiceId : undefined,
+    elevenLabsSfxOk,
+    claudeModelId,
+  };
+}
 
 function pickViaInput(multiple: boolean, accept: string): Promise<File[]> {
   return new Promise((resolve) => {
@@ -214,10 +250,11 @@ function resolveUnderProject(projectPath: string, relativePath: string): string 
 
 export function createWebPlatform(): IndieCutBridge {
   return {
-    version: "1.0.0-web",
+    version: "1.1.0-web",
     capabilities: {
       revealInFolder: false,
       openLocalPath: false,
+      cloudAi: false,
     },
     dialog: {
       pickProjectFolder,
@@ -287,6 +324,21 @@ export function createWebPlatform(): IndieCutBridge {
         }
         wakeLock = null;
         return { ok: true };
+      },
+    },
+    secrets: {
+      getAiSecrets: async () => {
+        try {
+          const raw = await aiSecretsStore.getItem(AI_SECRETS_KEY);
+          return normalizeAiSecrets(raw);
+        } catch {
+          return null;
+        }
+      },
+      setAiSecrets: async (next) => {
+        const normalized = normalizeAiSecrets(next);
+        if (!normalized) throw new Error("Invalid AI secrets payload");
+        await aiSecretsStore.setItem(AI_SECRETS_KEY, normalized);
       },
     },
     getPathForFile: (file) => registerBlob(file),

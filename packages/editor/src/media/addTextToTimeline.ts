@@ -5,7 +5,8 @@ import {
   ensureTrackForRange,
   isSharedVisualTrack,
 } from "../engine/timelineOps";
-import type { Clip, TextProps } from "../project/types";
+import type { Clip, TextProps, Track } from "../project/types";
+import { normalizeTextProps } from "../text/runs";
 import { getEditorStore } from "../store/editorStore";
 import {
   findTextTemplate,
@@ -40,14 +41,16 @@ function newClipId(): string {
 }
 
 export function textPropsForPreset(preset: TextPresetId): TextProps {
-  return { ...(preset === "body" ? BODY_DEFAULTS : TITLE_DEFAULTS) };
+  return normalizeTextProps({
+    ...(preset === "body" ? BODY_DEFAULTS : TITLE_DEFAULTS),
+  });
 }
 
-type PlaceTextClipOpts = {
+export type PlaceTextOnTracksOpts = {
+  tracks: Track[];
   text: TextProps;
   animation?: Clip["animation"];
   transform?: Clip["transform"];
-  commitLabel: string;
   targetTrackId?: string;
   /** Absolute timeline start. Defaults to playhead (+ magnet). */
   startMs?: number;
@@ -55,16 +58,25 @@ type PlaceTextClipOpts = {
   durationMs?: number;
   /** When true with an explicit startMs, skip magnet snap. */
   exactStart?: boolean;
+  playheadMs: number;
+  magnetEnabled: boolean;
+  pxPerSec: number;
+};
+
+export type PlaceTextOnTracksResult = {
+  tracks: Track[];
+  clip: Clip;
+  trackId: string;
 };
 
 /**
- * Shared placement: playhead (+ magnet), type-locked text lane / spill, commit.
+ * Pure placement: playhead (+ magnet), type-locked text lane / spill.
+ * Does not commit — callers apply tracks via commitTracks or MutationBatch.
  */
-function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
-  const store = getEditorStore();
-  const { project, magnetEnabled, timelinePxPerSec, commitTracks } = store;
-
-  let tracks = project.tracks;
+export function placeTextOnTracks(
+  opts: PlaceTextOnTracksOpts,
+): PlaceTextOnTracksResult | null {
+  let tracks = opts.tracks;
   let preferredTrackId: string | undefined;
 
   if (opts.targetTrackId) {
@@ -82,15 +94,15 @@ function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
   let startMs =
     typeof opts.startMs === "number" && Number.isFinite(opts.startMs)
       ? opts.startMs
-      : project.playheadMs;
-  if (magnetEnabled && !opts.exactStart) {
-    const edges: number[] = [0, project.playheadMs];
+      : opts.playheadMs;
+  if (opts.magnetEnabled && !opts.exactStart) {
+    const edges: number[] = [0, opts.playheadMs];
     for (const t of tracks) {
       for (const c of t.clips) {
         edges.push(c.startMs, c.startMs + c.durationMs);
       }
     }
-    startMs = snapMs(startMs, edges, snapThresholdMs(timelinePxPerSec));
+    startMs = snapMs(startMs, edges, snapThresholdMs(opts.pxPerSec));
   }
   startMs = Math.max(0, Math.round(startMs));
 
@@ -119,8 +131,47 @@ function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
   const next = addClipToTrack(tracks, track.id, clip);
   if (!next) return null;
 
-  commitTracks(next, opts.commitLabel, { clipId: clip.id, trackId: track.id });
-  return clip;
+  return { tracks: next, clip, trackId: track.id };
+}
+
+type PlaceTextClipOpts = {
+  text: TextProps;
+  animation?: Clip["animation"];
+  transform?: Clip["transform"];
+  commitLabel: string;
+  targetTrackId?: string;
+  startMs?: number;
+  durationMs?: number;
+  exactStart?: boolean;
+};
+
+/**
+ * Shared placement: playhead (+ magnet), type-locked text lane / spill, commit.
+ */
+function placeTextClip(opts: PlaceTextClipOpts): Clip | null {
+  const store = getEditorStore();
+  const { project, magnetEnabled, timelinePxPerSec, commitTracks } = store;
+
+  const placed = placeTextOnTracks({
+    tracks: project.tracks,
+    text: opts.text,
+    animation: opts.animation,
+    transform: opts.transform,
+    targetTrackId: opts.targetTrackId,
+    startMs: opts.startMs,
+    durationMs: opts.durationMs,
+    exactStart: opts.exactStart,
+    playheadMs: project.playheadMs,
+    magnetEnabled,
+    pxPerSec: timelinePxPerSec,
+  });
+  if (!placed) return null;
+
+  commitTracks(placed.tracks, opts.commitLabel, {
+    clipId: placed.clip.id,
+    trackId: placed.trackId,
+  });
+  return placed.clip;
 }
 
 /**

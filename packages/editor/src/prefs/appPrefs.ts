@@ -12,7 +12,34 @@ export type RecentProject = {
 const RECENTS_KEY = "recents_v1";
 const LAST_PATH_KEY = "lastProjectPath_v1";
 const SHORTCUTS_KEY = "shortcuts_v1";
+const CHAT_UI_KEY = "chatUi_v1";
 const MAX_RECENTS = 10;
+
+export type ChatUiPrefs = {
+  open: boolean;
+  /** Chat panel width as percent of the body row (1–100). */
+  widthPercent: number;
+};
+
+export const CHAT_DEFAULT_WIDTH_PERCENT = 28;
+export const CHAT_MIN_WIDTH_PERCENT = 18;
+export const CHAT_MAX_WIDTH_PERCENT = 42;
+
+const DEFAULT_CHAT_UI: ChatUiPrefs = {
+  open: false,
+  widthPercent: CHAT_DEFAULT_WIDTH_PERCENT,
+};
+
+/** Sync cache — hydrated in loadChatUiPrefs during app boot. */
+let chatUiCache: ChatUiPrefs = { ...DEFAULT_CHAT_UI };
+
+function clampChatWidth(n: number): number {
+  if (!Number.isFinite(n)) return CHAT_DEFAULT_WIDTH_PERCENT;
+  return Math.min(
+    CHAT_MAX_WIDTH_PERCENT,
+    Math.max(CHAT_MIN_WIDTH_PERCENT, Math.round(n)),
+  );
+}
 
 const prefs = localforage.createInstance({
   name: "indiecut",
@@ -99,4 +126,67 @@ export async function resetShortcutBindings(): Promise<ShortcutBindings> {
 
 export function effectiveShortcutMap(): Record<CommandId, string> {
   return { ...platformDefaultKeymap(), ...shortcutCache };
+}
+
+export function getChatUiPrefs(): ChatUiPrefs {
+  return { ...chatUiCache };
+}
+
+export async function loadChatUiPrefs(): Promise<ChatUiPrefs> {
+  clearLegacyChatUiDebris();
+  try {
+    const value = await prefs.getItem<Partial<ChatUiPrefs>>(CHAT_UI_KEY);
+    if (value && typeof value === "object") {
+      chatUiCache = {
+        open: Boolean(value.open),
+        widthPercent: clampChatWidth(
+          typeof value.widthPercent === "number"
+            ? value.widthPercent
+            : CHAT_DEFAULT_WIDTH_PERCENT,
+        ),
+      };
+    } else {
+      chatUiCache = { ...DEFAULT_CHAT_UI };
+    }
+  } catch {
+    chatUiCache = { ...DEFAULT_CHAT_UI };
+  }
+  return getChatUiPrefs();
+}
+
+export async function saveChatUiPrefs(
+  patch: Partial<ChatUiPrefs>,
+): Promise<ChatUiPrefs> {
+  chatUiCache = {
+    open:
+      typeof patch.open === "boolean" ? patch.open : chatUiCache.open,
+    widthPercent:
+      typeof patch.widthPercent === "number"
+        ? clampChatWidth(patch.widthPercent)
+        : chatUiCache.widthPercent,
+  };
+  try {
+    await prefs.setItem(CHAT_UI_KEY, chatUiCache);
+  } catch {
+    /* ignore */
+  }
+  return getChatUiPrefs();
+}
+
+/** Drop abandoned localStorage keys from earlier chat-panel persistence attempts. */
+function clearLegacyChatUiDebris(): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const keys = [
+      "indiecut.chatUi.v1",
+      "indiecut.chatUi.v2",
+      "react-resizable-panels:indiecut-body-with-chat-v1",
+      "react-resizable-panels:indiecut-body-with-chat-v2",
+      "react-resizable-panels:indiecut-body-with-chat-v3",
+      "react-resizable-panels:indiecut-body-with-chat-v4",
+    ];
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
 }

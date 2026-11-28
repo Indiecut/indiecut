@@ -2,6 +2,7 @@ import {
   formatLinearGradientCss,
 } from "../compositor/rasterizeText";
 import type { TextProps } from "../project/types";
+import { mapRunStyles, normalizeTextProps } from "../text/runs";
 import {
   AA_CUSTOM_PRESET_ID,
   cleanRecipeDefaults,
@@ -84,12 +85,19 @@ export function applyEffectPreset(
 ): TextProps {
   const preset = EFFECT_PRESETS.find((p) => p.id === presetId);
   if (!preset) return current;
-  const next: TextProps = {
+  let next: TextProps = {
     ...current,
     ...preset.patch,
     stylePresetId: AA_CUSTOM_PRESET_ID,
   };
-  return next;
+  next = mapRunStyles(next, (style) => ({
+    ...(style ?? {}),
+    color: next.color ?? style?.color,
+    gradient: next.gradient !== undefined ? next.gradient : style?.gradient,
+    strokeColor: next.strokeColor ?? style?.strokeColor,
+    strokeWidth: next.strokeWidth ?? style?.strokeWidth,
+  }));
+  return normalizeTextProps(next);
 }
 
 export function parseGradientStops(gradient: string | null | undefined): {

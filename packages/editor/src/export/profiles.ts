@@ -25,7 +25,23 @@ const RESOLUTION_SIZE: Record<ExportResolution, { width: number; height: number 
     "720P": { width: 1280, height: 720 },
     "1080P": { width: 1920, height: 1080 },
     "2K": { width: 2560, height: 1440 },
+    "4K": { width: 3840, height: 2160 },
   };
+
+/** Scale named/approx bitrates for large canvases (4K needs more than 1080p). */
+function scaleBitrateForResolution(
+  bitrate: number,
+  resolution: ExportResolution,
+): number {
+  switch (resolution) {
+    case "4K":
+      return Math.round(bitrate * 2.5);
+    case "2K":
+      return Math.round(bitrate * 1.5);
+    default:
+      return bitrate;
+  }
+}
 
 /** Map bit rate labels → MediaBunny Quality + estimate bitrate. */
 export function qualityForBitRate(bitRate: ExportBitRate): {
@@ -73,15 +89,28 @@ export function resolveExportProfile(
 ): ResolvedExportProfile {
   const size = RESOLUTION_SIZE[settings.resolution] ?? RESOLUTION_SIZE["1080P"];
   const q = qualityForBitRate(settings.bitRate);
+  const videoBitrateApprox = scaleBitrateForResolution(
+    q.videoBitrateApprox,
+    settings.resolution,
+  );
+  // Prefer explicit bitrate for 2K/4K so Quality("high") does not under-encode.
+  const videoQualityConfig: ExportQualityConfig =
+    settings.resolution === "4K" || settings.resolution === "2K"
+      ? { kind: "bitrate", bitrate: videoBitrateApprox }
+      : q.videoConfig;
+  const videoQuality =
+    videoQualityConfig.kind === "bitrate"
+      ? new Quality({ bitrate: videoQualityConfig.bitrate })
+      : q.video;
   return {
     width: size.width,
     height: size.height,
     fps: settings.frameRate,
-    videoQuality: q.video,
+    videoQuality,
     audioQuality: q.audio,
-    videoQualityConfig: q.videoConfig,
+    videoQualityConfig,
     audioQualityConfig: q.audioConfig,
-    videoBitrateApprox: q.videoBitrateApprox,
+    videoBitrateApprox,
     audioBitrateApprox: q.audioBitrateApprox,
   };
 }

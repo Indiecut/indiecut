@@ -335,6 +335,48 @@ function flushPendingSeek(force: boolean) {
 
 let sampleRequestId = 0;
 
+/** Capture the current preview stage as a downscaled JPEG/WebP. */
+export function capturePreviewComposite(args?: {
+  maxWidth?: number;
+  quality?: number;
+  mimeType?: "image/jpeg" | "image/webp";
+}): Promise<{
+  width: number;
+  height: number;
+  mimeType: string;
+  buffer: ArrayBuffer;
+}> {
+  const w = getWorker();
+  sampleRequestId += 1;
+  const id = sampleRequestId;
+  return new Promise((resolve, reject) => {
+    const onMessage = (event: MessageEvent<PreviewWorkerResponse>) => {
+      const msg = event.data;
+      if (!msg) return;
+      if (msg.type === "capturedComposite" && msg.requestId === id) {
+        w.removeEventListener("message", onMessage);
+        resolve({
+          width: msg.width,
+          height: msg.height,
+          mimeType: msg.mimeType,
+          buffer: msg.buffer,
+        });
+      } else if (msg.type === "failure" && msg.requestId === id) {
+        w.removeEventListener("message", onMessage);
+        reject(new Error(msg.error));
+      }
+    };
+    w.addEventListener("message", onMessage);
+    post({
+      type: "captureComposite",
+      requestId: id,
+      maxWidth: args?.maxWidth,
+      quality: args?.quality,
+      mimeType: args?.mimeType,
+    });
+  });
+}
+
 /** Sample RGB from a loaded asset's decoded source frame at UV (pre-adjust). */
 export function samplePreviewSourcePixel(args: {
   assetId: string;

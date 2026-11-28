@@ -12,6 +12,7 @@ import {
   lineAdvanceHeight,
   measureLineWidth,
   measureTextSize,
+  readGlyphVertMetrics,
   resolveText,
   textFontCss,
 } from "./rasterizeText";
@@ -64,15 +65,14 @@ export function compositeCaptionKaraoke(
   const pctx = probe.getContext("2d");
   if (!pctx) return null;
   pctx.font = textFontCss(t);
-  const metrics0 = pctx.measureText(visible[0]?.text || "M");
-  const ascent =
-    metrics0.actualBoundingBoxAscent > 0
-      ? metrics0.actualBoundingBoxAscent
-      : t.fontSize * 0.8;
-  const descent =
-    metrics0.actualBoundingBoxDescent > 0
-      ? metrics0.actualBoundingBoxDescent
-      : t.fontSize * 0.25;
+  pctx.textBaseline = "top";
+  let ascent = t.fontSize * 0.8;
+  let descent = t.fontSize * 0.3;
+  for (const w of visible) {
+    const metrics = readGlyphVertMetrics(pctx, w.text, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
+  }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
   const spaceW = pctx.measureText(" ").width;
 

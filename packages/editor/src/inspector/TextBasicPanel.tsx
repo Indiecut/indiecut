@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { textHasShadow } from "../compositor/rasterizeText";
 import { evaluateClipOpacity } from "../engine/animatable";
@@ -16,16 +15,24 @@ import {
   TEXT_FONTS,
   type TextFontEntry,
 } from "../fonts/registry";
-import type { Clip, TextProps, Track } from "../project/types";
+import type { Clip, TextProps, TextRunStyle, Track } from "../project/types";
 import { useEditorStore } from "../store/editorStore";
 import {
+  applyStyleToRange,
+  expandRunChars,
+  mapRunStyles,
+  normalizeTextProps,
+  syncRunsToContent,
+  resolvedRuns,
+} from "../text/runs";
+import {
+  WORD_ART_PRESETS,
+  wordArtById,
+  wordArtSampleStyle,
+} from "../text/wordArt";
+import {
   AA_CUSTOM_PRESET_ID,
-  AA_STYLE_PRESETS,
-  applyAaPreset,
-  cleanRecipeDefaults,
-  resolveActiveAaPresetId,
   touchesAaRecipe,
-  type AaPreset,
 } from "../textStyles/aaPresets";
 import {
   applyTemplateRecipe,
@@ -38,78 +45,11 @@ import { InspectorKeyframeRow } from "./InspectorKeyframeRow";
 import { TextAnimationPanel } from "./TextAnimationPanel";
 import { TextBubblePanel } from "./TextBubblePanel";
 import { TextEffectsPanel } from "./TextEffectsPanel";
+import { TextTemplateThumb } from "./TextTemplateThumb";
 import { TransformFields } from "./TransformFields";
 import { useClipGestureEdit } from "./useClipGestureEdit";
 
 const DEFAULT_RETRO_3D = "#7c2d12";
-
-function aaSampleStyle(preset: AaPreset): CSSProperties {
-  const p = { ...cleanRecipeDefaults(), ...preset.patch };
-  const strokeW = p.strokeWidth ?? 0;
-  const blur = p.shadowBlur ?? 0;
-  const ox = p.shadowOffsetX ?? 0;
-  const oy = p.shadowOffsetY ?? 0;
-  const shadowColor = p.shadowColor ?? "transparent";
-  return {
-    color: p.color ?? "#ffffff",
-    WebkitTextStroke:
-      strokeW > 0
-        ? `${Math.min(2, strokeW * 0.45)}px ${p.strokeColor ?? "#000000"}`
-        : undefined,
-    textShadow:
-      blur > 0 || ox !== 0 || oy !== 0
-        ? `${ox}px ${oy}px ${Math.min(12, blur)}px ${shadowColor}`
-        : undefined,
-  };
-}
-
-function templateSampleStyle(entry: TextTemplateEntry): CSSProperties {
-  const r = entry.recipe;
-  const strokeW = r.strokeWidth ?? 0;
-  const blur = r.shadowBlur ?? 0;
-  const ox = r.shadowOffsetX ?? 0;
-  const oy = r.shadowOffsetY ?? 0;
-  const shadowColor = r.shadowColor ?? "transparent";
-  const bubble = r.bubble;
-  const chromeOn = Boolean(bubble && bubble.type && bubble.type !== "none");
-  return {
-    color: r.color ?? "#ffffff",
-    fontFamily: r.fontFamily,
-    fontWeight: (r.fontWeight as CSSProperties["fontWeight"]) ?? 700,
-    fontStyle: r.fontStyle ?? "normal",
-    WebkitTextStroke:
-      strokeW > 0
-        ? `${Math.min(2, strokeW * 0.4)}px ${r.strokeColor ?? "#000000"}`
-        : undefined,
-    textShadow:
-      blur > 0 || ox !== 0 || oy !== 0
-        ? `${ox * 0.35}px ${oy * 0.35}px ${Math.min(10, blur * 0.45)}px ${shadowColor}`
-        : undefined,
-    background: chromeOn ? bubble?.fill : undefined,
-    border:
-      chromeOn && (bubble?.strokeWidth ?? 0) > 0
-        ? `${Math.min(2, bubble?.strokeWidth ?? 1)}px solid ${bubble?.stroke ?? "#000"}`
-        : undefined,
-    borderRadius:
-      bubble?.type === "pill"
-        ? 999
-        : bubble?.type === "rounded-rect" || bubble?.type === "speech-round"
-          ? 8
-          : chromeOn
-            ? 5
-            : undefined,
-    padding: chromeOn ? "4px 6px" : undefined,
-    boxShadow:
-      bubble?.type === "neon-frame"
-        ? `0 0 8px ${bubble.stroke}`
-        : undefined,
-  };
-}
-
-function templateSampleLabel(entry: TextTemplateEntry): string {
-  const firstLine = entry.defaultText.split("\n")[0] ?? entry.defaultText;
-  return firstLine.length > 8 ? `${firstLine.slice(0, 7)}…` : firstLine;
-}
 
 type Tab = "Text" | "Animation" | "3D";
 type TextSubtab = "Primary" | "Templates" | "Shape" | "Effects";
@@ -128,8 +68,9 @@ const DEFAULT_SHADOW = {
 
 function resolvePanelText(clip: Clip): TextProps {
   const t = clip.text;
-  return {
+  return normalizeTextProps({
     content: t?.content ?? "Text",
+    runs: t?.runs,
     fontFamily: t?.fontFamily ?? "system-ui, sans-serif",
     fontSize: t?.fontSize ?? 48,
     fontWeight: t?.fontWeight ?? 600,
@@ -151,7 +92,37 @@ function resolvePanelText(clip: Clip): TextProps {
     bubble: t?.bubble,
     stylePresetId: t?.stylePresetId,
     templateId: t?.templateId,
-  };
+  });
+}
+
+const RUN_STYLE_KEYS = new Set<keyof TextRunStyle>([
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "textDecoration",
+  "textTransform",
+  "script",
+  "color",
+  "gradient",
+  "highlight",
+  "strokeColor",
+  "strokeWidth",
+  "letterSpacing",
+]);
+
+function pickRunStylePartial(
+  partial: Partial<TextProps>,
+): TextRunStyle | null {
+  const out: TextRunStyle = {};
+  let any = false;
+  for (const key of RUN_STYLE_KEYS) {
+    if (key in partial) {
+      (out as Record<string, unknown>)[key] = (partial as TextRunStyle)[key];
+      any = true;
+    }
+  }
+  return any ? out : null;
 }
 
 function FontPicker({
@@ -277,14 +248,79 @@ export function TextBasicPanel({ clip, track }: Props) {
   const shadowOn = textHasShadow(text);
   const retroOn =
     typeof text.retro3DColor === "string" && text.retro3DColor.length > 0;
-  const activeAaId = resolveActiveAaPresetId(text);
   const weightNum =
     typeof text.fontWeight === "number"
       ? text.fontWeight
       : Number.parseInt(String(text.fontWeight), 10) || 600;
-  const boldOn = weightNum >= 700;
-  const italicOn = text.fontStyle === "italic";
-  const underlineOn = text.textDecoration === "underline";
+
+  /** Content textarea selection — styles apply to this range when non-empty. */
+  const [contentSel, setContentSel] = useState({ start: 0, end: 0 });
+  const hasContentRange = contentSel.start !== contentSel.end;
+
+  const syncContentSel = (
+    el: HTMLTextAreaElement | null | undefined,
+  ) => {
+    if (!el) return;
+    setContentSel({ start: el.selectionStart, end: el.selectionEnd });
+  };
+
+  /** Active style at caret / selection start (for chip pressed state). */
+  const activeStyle: TextRunStyle = (() => {
+    const chars = expandRunChars(resolvedRuns(text));
+    if (chars.length === 0) {
+      return {
+        fontFamily: text.fontFamily,
+        fontSize: text.fontSize,
+        fontWeight: text.fontWeight,
+        fontStyle: text.fontStyle,
+        textDecoration: text.textDecoration,
+        textTransform: text.textTransform,
+        color: text.color,
+        gradient: text.gradient,
+        strokeColor: text.strokeColor,
+        strokeWidth: text.strokeWidth,
+        letterSpacing: text.letterSpacing,
+        script: "normal" as const,
+        highlight: null,
+      };
+    }
+    const idx = Math.min(
+      Math.max(0, Math.min(contentSel.start, contentSel.end)),
+      chars.length - 1,
+    );
+    const runStyle = chars[idx]?.style ?? {};
+    return {
+      fontFamily: runStyle.fontFamily ?? text.fontFamily,
+      fontSize: runStyle.fontSize ?? text.fontSize,
+      fontWeight: runStyle.fontWeight ?? text.fontWeight,
+      fontStyle: runStyle.fontStyle ?? text.fontStyle,
+      textDecoration: runStyle.textDecoration ?? text.textDecoration,
+      textTransform: runStyle.textTransform ?? text.textTransform,
+      color: runStyle.color ?? text.color,
+      gradient:
+        runStyle.gradient !== undefined ? runStyle.gradient : text.gradient,
+      highlight: runStyle.highlight ?? null,
+      strokeColor: runStyle.strokeColor ?? text.strokeColor,
+      strokeWidth: runStyle.strokeWidth ?? text.strokeWidth,
+      letterSpacing: runStyle.letterSpacing ?? text.letterSpacing,
+      script: runStyle.script ?? "normal",
+    };
+  })();
+
+  const boldOn =
+    (typeof activeStyle.fontWeight === "number"
+      ? activeStyle.fontWeight
+      : Number.parseInt(String(activeStyle.fontWeight ?? weightNum), 10) ||
+        600) >= 700;
+  const italicOn = activeStyle.fontStyle === "italic";
+  const underlineOn = activeStyle.textDecoration === "underline";
+  const strikeOn = activeStyle.textDecoration === "line-through";
+  const upperOn = activeStyle.textTransform === "uppercase";
+  const scriptMode = activeStyle.script ?? "normal";
+  const highlightColor =
+    activeStyle.highlight && activeStyle.highlight.startsWith("#")
+      ? activeStyle.highlight.slice(0, 7)
+      : "#facc15";
 
   const recipePartial = (partial: Partial<TextProps>): Partial<TextProps> => {
     if (!touchesAaRecipe(partial)) return partial;
@@ -292,18 +328,67 @@ export function TextBasicPanel({ clip, track }: Props) {
     return { ...partial, stylePresetId: AA_CUSTOM_PRESET_ID };
   };
 
-  const patchText = (partial: Partial<TextProps>, label = "Text") => {
-    gesture.commit({ text: { ...text, ...recipePartial(partial) } }, label);
+  const applyRunPatch = (
+    current: TextProps,
+    runPatch: TextRunStyle,
+  ): TextProps => {
+    // Non-empty content selection → style that span; otherwise whole clip.
+    if (hasContentRange) {
+      const a = Math.min(contentSel.start, contentSel.end);
+      const b = Math.max(contentSel.start, contentSel.end);
+      const runs = applyStyleToRange(resolvedRuns(current), a, b, runPatch);
+      return normalizeTextProps({ ...current, runs });
+    }
+    return mapRunStyles(current, (style) => ({
+      ...(style ?? {}),
+      ...runPatch,
+    }));
   };
 
-  const liveText = (partial: Partial<TextProps>) => {
-    gesture.live({ text: { ...text, ...recipePartial(partial) } });
+  const mergeTextPartial = (
+    partial: Partial<TextProps> & TextRunStyle,
+  ): TextProps => {
+    const withRecipe = recipePartial(partial);
+    if ("content" in withRecipe && typeof withRecipe.content === "string") {
+      // Preserve mixed run styles across typing / delete / paste.
+      return syncRunsToContent(
+        { ...text, ...withRecipe },
+        withRecipe.content,
+      );
+    }
+
+    const runPatch = pickRunStylePartial(withRecipe);
+    // Strip run-only keys that are not on TextProps before spreading.
+    const {
+      script: _script,
+      highlight: _highlight,
+      ...boxPartial
+    } = withRecipe as Partial<TextProps> & TextRunStyle;
+    void _script;
+    void _highlight;
+
+    let next = normalizeTextProps({ ...text, ...boxPartial });
+    if (runPatch) next = applyRunPatch(next, runPatch);
+    return next;
   };
 
-  const applyStylePreset = (presetId: string) => {
+  const patchText = (
+    partial: Partial<TextProps> & TextRunStyle,
+    label = "Text",
+  ) => {
+    gesture.commit({ text: mergeTextPartial(partial) }, label);
+  };
+
+  const liveText = (partial: Partial<TextProps> & TextRunStyle) => {
+    gesture.live({ text: mergeTextPartial(partial) });
+  };
+
+  const applyWordArt = (id: string) => {
+    const entry = wordArtById(id);
+    if (!entry) return;
     gesture.commit(
-      { text: applyAaPreset(text, presetId) },
-      "Text style",
+      { text: applyRunPatch(text, entry.style) },
+      entry.label,
     );
   };
 
@@ -378,7 +463,7 @@ export function TextBasicPanel({ clip, track }: Props) {
                 <h3 className="inspector-section__title">Shape styles</h3>
               </div>
               <p className="inspector-panel__hint">
-                Applies style to this clip. Content is kept.
+                Applies design and sample text to this clip.
               </p>
               <div
                 className="text-anim__grid text-anim__grid--aa"
@@ -402,13 +487,7 @@ export function TextBasicPanel({ clip, track }: Props) {
                       }
                       onClick={() => applyTemplate(entry)}
                     >
-                      <span
-                        className="text-aa__sample"
-                        style={templateSampleStyle(entry)}
-                        aria-hidden
-                      >
-                        {templateSampleLabel(entry)}
-                      </span>
+                      <TextTemplateThumb entry={entry} />
                       <span className="text-anim__label">{entry.name}</span>
                     </button>
                   );
@@ -433,15 +512,32 @@ export function TextBasicPanel({ clip, track }: Props) {
                 rows={3}
                 value={text.content}
                 onFocus={gesture.begin}
-                onBlur={gesture.end}
-                onChange={(e) => liveText({ content: e.target.value })}
+                onBlur={(e) => {
+                  syncContentSel(e.currentTarget);
+                  gesture.end();
+                }}
+                onSelect={(e) => syncContentSel(e.currentTarget)}
+                onKeyUp={(e) => syncContentSel(e.currentTarget)}
+                onMouseUp={(e) => syncContentSel(e.currentTarget)}
+                onChange={(e) => {
+                  syncContentSel(e.currentTarget);
+                  liveText({ content: e.target.value });
+                }}
               />
             </label>
+            <p className="inspector-panel__hint">
+              Select part of the text above to style only that span. With no
+              selection, styles apply to the whole clip.
+            </p>
 
             <div className="inspector-field">
               <span className="inspector-field__label">Font</span>
               <FontPicker
-                value={text.fontFamily ?? "system-ui, sans-serif"}
+                value={
+                  activeStyle.fontFamily ??
+                  text.fontFamily ??
+                  "system-ui, sans-serif"
+                }
                 locked={locked}
                 onPick={(stack) => patchText({ fontFamily: stack }, "Font")}
               />
@@ -457,7 +553,7 @@ export function TextBasicPanel({ clip, track }: Props) {
                   max={200}
                   step={1}
                   disabled={locked}
-                  value={text.fontSize}
+                  value={activeStyle.fontSize ?? text.fontSize}
                   onPointerDown={gesture.begin}
                   onPointerUp={gesture.end}
                   onChange={(e) =>
@@ -468,7 +564,7 @@ export function TextBasicPanel({ clip, track }: Props) {
                   type="number"
                   className="inspector-number"
                   disabled={locked}
-                  value={text.fontSize}
+                  value={activeStyle.fontSize ?? text.fontSize}
                   min={12}
                   max={200}
                   onFocus={gesture.begin}
@@ -543,18 +639,156 @@ export function TextBasicPanel({ clip, track }: Props) {
                 >
                   U
                 </button>
+                <button
+                  type="button"
+                  className={
+                    strikeOn
+                      ? "inspector-chip inspector-chip--style inspector-chip--active"
+                      : "inspector-chip inspector-chip--style"
+                  }
+                  disabled={locked}
+                  aria-pressed={strikeOn}
+                  title="Strikethrough"
+                  onClick={() =>
+                    patchText(
+                      {
+                        textDecoration: strikeOn ? "none" : "line-through",
+                      },
+                      "Strikethrough",
+                    )
+                  }
+                >
+                  S
+                </button>
+                <button
+                  type="button"
+                  className={
+                    upperOn
+                      ? "inspector-chip inspector-chip--style inspector-chip--active"
+                      : "inspector-chip inspector-chip--style"
+                  }
+                  disabled={locked}
+                  aria-pressed={upperOn}
+                  title="Uppercase"
+                  onClick={() =>
+                    patchText(
+                      {
+                        textTransform: upperOn ? "none" : "uppercase",
+                      },
+                      "Uppercase",
+                    )
+                  }
+                >
+                  AA
+                </button>
+                <button
+                  type="button"
+                  className={
+                    scriptMode === "super"
+                      ? "inspector-chip inspector-chip--style inspector-chip--active"
+                      : "inspector-chip inspector-chip--style"
+                  }
+                  disabled={locked}
+                  aria-pressed={scriptMode === "super"}
+                  title="Superscript"
+                  onClick={() =>
+                    patchText(
+                      {
+                        script:
+                          scriptMode === "super" ? "normal" : "super",
+                      },
+                      "Superscript",
+                    )
+                  }
+                >
+                  X²
+                </button>
+                <button
+                  type="button"
+                  className={
+                    scriptMode === "sub"
+                      ? "inspector-chip inspector-chip--style inspector-chip--active"
+                      : "inspector-chip inspector-chip--style"
+                  }
+                  disabled={locked}
+                  aria-pressed={scriptMode === "sub"}
+                  title="Subscript"
+                  onClick={() =>
+                    patchText(
+                      {
+                        script: scriptMode === "sub" ? "normal" : "sub",
+                      },
+                      "Subscript",
+                    )
+                  }
+                >
+                  X₂
+                </button>
               </div>
             </div>
 
             <ColorField
               label="Color"
-              value={text.color ?? "#ffffff"}
+              value={activeStyle.color ?? text.color ?? "#ffffff"}
               fallback="#ffffff"
               locked={locked}
               onBegin={gesture.begin}
               onEnd={gesture.end}
-              onLive={(hex) => liveText({ color: hex })}
+              onLive={(hex) => liveText({ color: hex, gradient: null })}
             />
+
+            <ColorField
+              label="Highlight"
+              value={highlightColor}
+              fallback="#facc15"
+              locked={locked}
+              onBegin={gesture.begin}
+              onEnd={gesture.end}
+              onLive={(hex) => liveText({ highlight: hex })}
+            />
+            <div className="inspector-field">
+              <span className="inspector-field__label" />
+              <button
+                type="button"
+                className="inspector-chip"
+                disabled={locked || !activeStyle.highlight}
+                onClick={() =>
+                  patchText({ highlight: null }, "Clear highlight")
+                }
+              >
+                Clear highlight
+              </button>
+            </div>
+
+            <div className="inspector-field inspector-field--stack">
+              <span className="inspector-field__label">WordArt</span>
+              <div
+                className="text-anim__grid text-anim__grid--wordart"
+                role="listbox"
+                aria-label="WordArt styles"
+              >
+                {WORD_ART_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="option"
+                    disabled={locked}
+                    title={p.label}
+                    aria-label={p.label}
+                    className="text-anim__tile"
+                    onClick={() => applyWordArt(p.id)}
+                  >
+                    <span
+                      className="text-aa__sample"
+                      style={wordArtSampleStyle(p)}
+                      aria-hidden
+                    >
+                      Aa
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <InspectorKeyframeRow
               clipId={clip.id}
@@ -866,47 +1100,6 @@ export function TextBasicPanel({ clip, track }: Props) {
               </div>
             </label>
 
-            <div className="inspector-section__head">
-              <h3 className="inspector-section__title">Preset style</h3>
-            </div>
-            <div
-              className="text-anim__grid text-anim__grid--aa"
-              role="listbox"
-              aria-label="Text preset styles"
-            >
-              {AA_STYLE_PRESETS.map((preset) => {
-                const active = activeAaId === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    disabled={locked}
-                    title={preset.name}
-                    className={
-                      active
-                        ? "text-anim__tile text-anim__tile--active"
-                        : "text-anim__tile"
-                    }
-                    onClick={() => applyStylePreset(preset.id)}
-                  >
-                    {preset.id === "none" ? (
-                      <span className="text-anim__none">None</span>
-                    ) : (
-                      <span
-                        className="text-aa__sample"
-                        style={aaSampleStyle(preset)}
-                        aria-hidden
-                      >
-                        Aa
-                      </span>
-                    )}
-                    <span className="text-anim__label">{preset.name}</span>
-                  </button>
-                );
-              })}
-            </div>
           </section>
 
           <TransformFields clip={clip} locked={locked} maxScalePercent={800} />

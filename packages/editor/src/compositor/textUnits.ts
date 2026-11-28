@@ -14,6 +14,14 @@ import type {
   TextProps,
 } from "../project/types";
 import {
+  normalizeTextProps,
+  sliceRuns,
+} from "../text/runs";
+import {
+  layoutRichText,
+  shouldUseRichTextPath,
+} from "./richTextLayout";
+import {
   bubbleRectForText,
   contentInsets,
   lineAdvanceHeight,
@@ -23,11 +31,12 @@ import {
   paintRetro3D,
   paintTextLine,
   paintUnderline,
+  readGlyphVertMetrics,
   resolveText,
   textFontCss,
 } from "./rasterizeText";
 
-const PAD = 4;
+const PAD = 6;
 
 export type LaidOutTextUnit = {
   index: number;
@@ -37,6 +46,9 @@ export type LaidOutTextUnit = {
   y: number;
   width: number;
   height: number;
+  /** Optional code-point range into plain content (rich runs). */
+  startIndex?: number;
+  endIndex?: number;
 };
 
 export type TextUnitLayout = {
@@ -65,11 +77,118 @@ export function layoutTextUnits(
   props: TextProps,
   anim?: TextAnimationParams | null,
 ): TextUnitLayout | null {
-  const block = measureTextSize(props);
+  const normalized = normalizeTextProps(props);
+  const block = measureTextSize(normalized);
   if (!block) return null;
 
   const granularity = effectiveGranularity(anim);
-  const t = resolveText(props, 1);
+
+  if (shouldUseRichTextPath(normalized) && granularity !== "whole") {
+    const rich = layoutRichText(normalized, 1);
+    if (!rich) return null;
+    const units: LaidOutTextUnit[] = [];
+    let index = 0;
+    const bubbleContent = rich.box.bubble
+      ? {
+          w: rich.maxW + rich.box.bubble.paddingX * 2,
+          h: rich.textH + rich.box.bubble.paddingY * 2 + rich.box.bubble.tailH,
+        }
+      : undefined;
+    const inset = contentInsets(rich.box, bubbleContent);
+
+    if (granularity === "line") {
+      for (const line of rich.lines) {
+        const text = line.glyphs.map((g) => g.ch).join("");
+        const startIndex = line.glyphs[0]?.index ?? 0;
+        const endIndex =
+          line.glyphs.length > 0
+            ? line.glyphs[line.glyphs.length - 1]!.index + 1
+            : startIndex;
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        units.push({
+          index: index++,
+          text,
+          x: ox,
+          y: inset.y + line.y,
+          width: Math.max(line.width, 1) + rich.box.pad * 2,
+          height: line.height + rich.box.pad,
+          startIndex,
+          endIndex,
+        });
+      }
+    } else if (granularity === "word") {
+      for (const line of rich.lines) {
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        let i = 0;
+        while (i < line.glyphs.length) {
+          const g0 = line.glyphs[i]!;
+          if (/\s/.test(g0.ch)) {
+            i += 1;
+            continue;
+          }
+          let j = i;
+          while (j < line.glyphs.length && !/\s/.test(line.glyphs[j]!.ch)) {
+            j += 1;
+          }
+          const slice = line.glyphs.slice(i, j);
+          const text = slice.map((g) => g.ch).join("");
+          const x0 = slice[0]!.x;
+          const x1 = slice[slice.length - 1]!.x + slice[slice.length - 1]!.width;
+          units.push({
+            index: index++,
+            text,
+            x: ox + x0,
+            y: inset.y + line.y,
+            width: Math.max(x1 - x0, 1) + rich.box.pad * 2,
+            height: line.height + rich.box.pad * 2,
+            startIndex: slice[0]!.index,
+            endIndex: slice[slice.length - 1]!.index + 1,
+          });
+          i = j;
+        }
+      }
+    } else {
+      for (const line of rich.lines) {
+        const ox =
+          rich.box.align === "left"
+            ? inset.x
+            : rich.box.align === "right"
+              ? block.width - inset.x - line.width
+              : (block.width - line.width) / 2;
+        for (const g of line.glyphs) {
+          units.push({
+            index: index++,
+            text: g.ch,
+            x: ox + g.x,
+            y: inset.y + line.y,
+            width: Math.max(g.width, 1) + rich.box.pad * 2,
+            height: line.height + rich.box.pad * 2,
+            startIndex: g.index,
+            endIndex: g.index + 1,
+          });
+        }
+      }
+    }
+
+    return {
+      blockWidth: block.width,
+      blockHeight: block.height,
+      granularity,
+      units,
+    };
+  }
+
+  const t = resolveText(normalized, 1);
   // Same as measureTextSize: document canvas on main so FontFaces apply.
   const canvas =
     typeof document !== "undefined"
@@ -85,21 +204,32 @@ export function layoutTextUnits(
   if (!ctx) return null;
 
   ctx.font = textFontCss(t);
+  ctx.textBaseline = "top";
   const lines = t.content.split("\n");
   let ascent = t.fontSize * 0.8;
-  let descent = t.fontSize * 0.25;
+  let descent = t.fontSize * 0.3;
   for (const line of lines) {
-    const metrics0 = ctx.measureText(line || "M");
-    if (metrics0.actualBoundingBoxAscent > 0) {
-      ascent = Math.max(ascent, metrics0.actualBoundingBoxAscent);
-    }
-    if (metrics0.actualBoundingBoxDescent > 0) {
-      descent = Math.max(descent, metrics0.actualBoundingBoxDescent);
-    }
+    const metrics = readGlyphVertMetrics(ctx, line, t.fontSize);
+    ascent = Math.max(ascent, metrics.ascent);
+    descent = Math.max(descent, metrics.descent);
   }
   const lineHeight = lineAdvanceHeight(t, ascent, descent);
   const strokePad = t.strokeWidth * 2;
-  const inset = contentInsets(t);
+  let maxContentW = 0;
+  for (const line of lines) {
+    maxContentW = Math.max(
+      maxContentW,
+      measureLineWidth(ctx, line, t.letterSpacing),
+    );
+  }
+  const textBlockH = lines.length * lineHeight;
+  const bubbleContent = t.bubble
+    ? {
+        w: maxContentW + t.bubble.paddingX * 2,
+        h: textBlockH + t.bubble.paddingY * 2 + t.bubble.tailH,
+      }
+    : undefined;
+  const inset = contentInsets(t, bubbleContent);
   const originY = inset.y;
 
   if (granularity === "whole") {
@@ -229,6 +359,7 @@ export function rasterizeTextUnit(
   props: TextProps,
   unitText: string,
   pixelRatio: number,
+  range?: { startIndex: number; endIndex: number },
 ): {
   canvas: OffscreenCanvas;
   width: number;
@@ -236,11 +367,26 @@ export function rasterizeTextUnit(
   logicalWidth: number;
   logicalHeight: number;
 } | null {
-  const unitProps: TextProps = {
-    ...props,
+  const normalized = normalizeTextProps(props);
+  let unitProps: TextProps = {
+    ...normalized,
     content: unitText === "\n" ? " " : unitText || " ",
     align: "left",
   };
+  if (
+    range &&
+    shouldUseRichTextPath(normalized) &&
+    normalized.runs &&
+    range.endIndex > range.startIndex
+  ) {
+    const runs = sliceRuns(normalized.runs, range.startIndex, range.endIndex);
+    unitProps = normalizeTextProps({
+      ...normalized,
+      runs,
+      content: unitText === "\n" ? " " : unitText || " ",
+      align: "left",
+    });
+  }
   const t = resolveText(unitProps, pixelRatio);
   const pr = t.pr;
   const fontSize = t.fontSize;
@@ -258,16 +404,13 @@ export function rasterizeTextUnit(
     | null;
   if (!pctx) return null;
   pctx.font = textFontCss(t);
+  pctx.textBaseline = "top";
   const mW = measureLineWidth(pctx, unitProps.content, t.letterSpacing);
-  const m = pctx.measureText(unitProps.content);
-  const ascent =
-    m.actualBoundingBoxAscent > 0
-      ? m.actualBoundingBoxAscent
-      : fontSize * 0.8;
-  const descent =
-    m.actualBoundingBoxDescent > 0
-      ? m.actualBoundingBoxDescent
-      : fontSize * 0.25;
+  const { ascent, descent } = readGlyphVertMetrics(
+    pctx,
+    unitProps.content,
+    fontSize,
+  );
   const strokePad = strokeWidth * 2;
   const logicalWidth = Math.max(
     2,
@@ -472,15 +615,14 @@ export function compositeAnimatedText(args: {
       for (const line of lines) {
         maxW = Math.max(maxW, measureLineWidth(pctx, line, paint.letterSpacing));
       }
-      const metrics0 = pctx.measureText(lines[0] || "M");
-      const ascent =
-        metrics0.actualBoundingBoxAscent > 0
-          ? metrics0.actualBoundingBoxAscent
-          : paint.fontSize * 0.8;
-      const descent =
-        metrics0.actualBoundingBoxDescent > 0
-          ? metrics0.actualBoundingBoxDescent
-          : paint.fontSize * 0.25;
+      pctx.textBaseline = "top";
+      let ascent = paint.fontSize * 0.8;
+      let descent = paint.fontSize * 0.3;
+      for (const line of lines) {
+        const metrics = readGlyphVertMetrics(pctx, line, paint.fontSize);
+        ascent = Math.max(ascent, metrics.ascent);
+        descent = Math.max(descent, metrics.descent);
+      }
       const lineHeight = lineAdvanceHeight(paint, ascent, descent);
       const textH = lines.length * lineHeight;
       const fullW = layout.blockWidth * pr;
@@ -528,7 +670,14 @@ export function compositeAnimatedText(args: {
 
     let bmp = unitBitmaps.get(i);
     if (!bmp) {
-      const raster = rasterizeTextUnit(props, unit.text, pr);
+      const raster = rasterizeTextUnit(
+        props,
+        unit.text,
+        pr,
+        unit.startIndex != null && unit.endIndex != null
+          ? { startIndex: unit.startIndex, endIndex: unit.endIndex }
+          : undefined,
+      );
       if (!raster) continue;
       bmp = raster;
       unitBitmaps.set(i, bmp);

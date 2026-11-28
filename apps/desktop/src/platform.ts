@@ -20,6 +20,7 @@ export function installDesktopPlatform(): void {
     capabilities: {
       revealInFolder: true,
       openLocalPath: true,
+      cloudAi: true,
       ...bridge.capabilities,
     },
   });

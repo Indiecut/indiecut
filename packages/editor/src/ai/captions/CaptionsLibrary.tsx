@@ -1,7 +1,18 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useEditorStore } from "../../store/editorStore";
 import type { CaptionCue, Clip, Track } from "../../project/types";
+import { isCloudAiAvailable } from "../isCloudAiAvailable";
+import {
+  hasElevenLabsKey,
+  loadAiSecrets,
+  subscribeAiSecrets,
+} from "../secrets/aiSecrets";
 import { CaptionCueRail } from "./CaptionCueRail";
+import {
+  CAPTION_STT_PROVIDERS,
+  DEFAULT_CAPTION_STT_PROVIDER,
+  type CaptionSttProvider,
+} from "./captionProviders";
 import { captionDisplayMs, normalizeCaptionSpeed } from "./captionTiming";
 import { hasAudibleTimelineSpeech } from "./hasAudibleTimelineSpeech";
 import { importTimedTextFromFile } from "./importTimedTextJob";
@@ -135,15 +146,62 @@ export function CaptionsLibrary() {
   const [language, setLanguage] = useState<SpeechLanguage>(
     DEFAULT_SPEECH_LANGUAGE,
   );
+  const [provider, setProvider] = useState<CaptionSttProvider>(
+    DEFAULT_CAPTION_STT_PROVIDER,
+  );
+  const cloudAi = isCloudAiAvailable();
+  const [elevenLabsReady, setElevenLabsReady] = useState(
+    () => cloudAi && hasElevenLabsKey(),
+  );
   const [job, setJob] = useState<JobState>(IDLE);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const sttProviders = useMemo(
+    () =>
+      cloudAi
+        ? CAPTION_STT_PROVIDERS
+        : CAPTION_STT_PROVIDERS.filter((p) => p.id !== "elevenlabs"),
+    [cloudAi],
+  );
+
+  useEffect(() => {
+    if (!cloudAi) {
+      setElevenLabsReady(false);
+      return;
+    }
+    void loadAiSecrets().then(() => {
+      setElevenLabsReady(hasElevenLabsKey());
+    });
+    return subscribeAiSecrets(() => {
+      setElevenLabsReady(hasElevenLabsKey());
+    });
+  }, [cloudAi]);
+
+  useEffect(() => {
+    if ((!cloudAi || !elevenLabsReady) && provider === "elevenlabs") {
+      setProvider(DEFAULT_CAPTION_STT_PROVIDER);
+    }
+  }, [cloudAi, elevenLabsReady, provider]);
+
   const isRunning = job.status === "running";
   const hasCaption = captionClips.length > 0;
+  const providerMeta =
+    sttProviders.find((p) => p.id === provider) ??
+    sttProviders[0]!;
 
   const handleGenerate = async () => {
     if (isRunning) return;
+    if (provider === "elevenlabs" && !hasElevenLabsKey()) {
+      setJob({
+        status: "idle",
+        error:
+          "ElevenLabs is not configured — add an API key in Settings → AI → Voice",
+        warnings: [],
+        success: null,
+      });
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setJob({
@@ -156,6 +214,7 @@ export function CaptionsLibrary() {
     try {
       const result = await runAutoCaptionJob({
         language,
+        provider,
         signal: controller.signal,
         onProgress: (progress) => {
           const loading = progress.status === "loading-model";
@@ -290,23 +349,48 @@ export function CaptionsLibrary() {
     >
       {hasCaption ? (
         <div className="captions-library__toolbar">
-          <label className="captions-library__field captions-library__field--inline">
-            <span className="captions-library__label">Language</span>
-            <select
-              className="captions-library__select"
-              value={language}
-              disabled={isRunning}
-              onChange={(e) =>
-                setLanguage(e.target.value as SpeechLanguage)
-              }
-            >
-              {SPEECH_LANGUAGES.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="captions-library__toolbar-fields">
+            <label className="captions-library__field captions-library__field--inline">
+              <span className="captions-library__label">Engine</span>
+              <select
+                className="captions-library__select"
+                value={provider}
+                disabled={isRunning}
+                onChange={(e) =>
+                  setProvider(e.target.value as CaptionSttProvider)
+                }
+              >
+                {sttProviders.map((opt) => (
+                  <option
+                    key={opt.id}
+                    value={opt.id}
+                    disabled={opt.id === "elevenlabs" && !elevenLabsReady}
+                  >
+                    {opt.id === "elevenlabs" && !elevenLabsReady
+                      ? "ElevenLabs (add API key in Settings → AI)"
+                      : opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="captions-library__field captions-library__field--inline">
+              <span className="captions-library__label">Language</span>
+              <select
+                className="captions-library__select"
+                value={language}
+                disabled={isRunning}
+                onChange={(e) =>
+                  setLanguage(e.target.value as SpeechLanguage)
+                }
+              >
+                {SPEECH_LANGUAGES.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="captions-library__toolbar-actions">
             <button
               type="button"
@@ -343,6 +427,30 @@ export function CaptionsLibrary() {
           </p>
 
           <div className="captions-library__fields">
+            <label className="captions-library__field">
+              <span className="captions-library__label">Engine</span>
+              <select
+                className="captions-library__select"
+                value={provider}
+                disabled={isRunning}
+                onChange={(e) =>
+                  setProvider(e.target.value as CaptionSttProvider)
+                }
+              >
+                {sttProviders.map((opt) => (
+                  <option
+                    key={opt.id}
+                    value={opt.id}
+                    disabled={opt.id === "elevenlabs" && !elevenLabsReady}
+                  >
+                    {opt.id === "elevenlabs" && !elevenLabsReady
+                      ? "ElevenLabs (add API key in Settings → AI)"
+                      : opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="captions-library__hint">{providerMeta.hint}</span>
+            </label>
             <label className="captions-library__field">
               <span className="captions-library__label">Language</span>
               <select

@@ -10,7 +10,9 @@ import {
   evaluateClipMask,
   evaluateClipTransform,
   maskAnimatablePath,
+  maskPointLeaf,
   setAnimatableValue,
+  type MaskAnimatableLeaf,
 } from "../engine/animatable";
 import { clipLocalMs } from "../engine/time";
 import type { Clip, ResolvedClipMask } from "../project/types";
@@ -23,7 +25,8 @@ type DragKind =
   | "gap"
   | "scale"
   | "feather"
-  | "cornerRadius";
+  | "cornerRadius"
+  | "vertex";
 
 type DragState = {
   kind: DragKind;
@@ -31,6 +34,7 @@ type DragState = {
   startClientY: number;
   before: ResolvedClipMask;
   startAngle?: number;
+  vertexIndex?: number;
 };
 
 type Props = {
@@ -197,16 +201,7 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
     (
       clip: Clip,
       maskId: string,
-      leaf:
-        | "feather"
-        | "expand"
-        | "position.x"
-        | "position.y"
-        | "rotationDeg"
-        | "size.w"
-        | "size.h"
-        | "cornerRadius"
-        | "stripGap",
+      leaf: MaskAnimatableLeaf,
       value: number,
       localMs: number,
     ) => {
@@ -375,6 +370,31 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
           Math.max(0, (drag.before.cornerRadius ?? 0) + dx * 0.25),
         );
         writeMaskLeaf(overlayClip, mid, "cornerRadius", cornerRadius, localMs);
+        return;
+      }
+
+      if (drag.kind === "vertex" && drag.vertexIndex != null) {
+        const rect = stageRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const mx = e.clientX - (rect.left + geometry.centerX);
+        const my = e.clientY - (rect.top + geometry.centerY);
+        const local = rotatePoint(mx, my, -geometry.rotation);
+        const sizeWLayout = Math.max(1e-6, drag.before.size?.w ?? 400);
+        const sizeHLayout = Math.max(1e-6, drag.before.size?.h ?? 400);
+        // Screen local → normalized ±0.5 (half size in layout, then / size)
+        const nx =
+          local.x / sx / Math.max(1e-6, scaleX) / (sizeWLayout / 2);
+        const ny =
+          local.y / sy / Math.max(1e-6, scaleY) / (sizeHLayout / 2);
+        const idx = drag.vertexIndex;
+        writeMaskLeaf(overlayClip, mid, maskPointLeaf(idx, "x"), nx, localMs);
+        const latest = findClip(
+          useEditorStore.getState().project.tracks,
+          overlayClip.id,
+        )?.clip;
+        if (latest) {
+          writeMaskLeaf(latest, mid, maskPointLeaf(idx, "y"), ny, localMs);
+        }
       }
     },
     [geometry, mask, overlayClip, stageRef, writeMaskLeaf],
@@ -432,7 +452,9 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
     mask.type === "rectangle" ||
     mask.type === "stars" ||
     mask.type === "heart" ||
-    mask.type === "text";
+    mask.type === "text" ||
+    mask.type === "custom";
+  const isCustom = mask.type === "custom" && (mask.points?.length ?? 0) >= 3;
 
   const halfGap = (mask.type === "filmstrip" ? gap : 40) / 2;
   const lineLen = Math.max(stageSize.w, stageSize.h) * 1.5;
@@ -484,7 +506,7 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
           </svg>
         )}
 
-        {isClosed && (
+        {isClosed && !isCustom && (
           <div
             style={{
               position: "absolute",
@@ -492,10 +514,7 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
               top: -sizeH / 2,
               width: sizeW,
               height: sizeH,
-              border:
-                mask.type === "circle"
-                  ? "1.5px solid rgba(255,255,255,0.95)"
-                  : "1.5px solid rgba(255,255,255,0.95)",
+              border: "1.5px solid rgba(255,255,255,0.95)",
               borderRadius:
                 mask.type === "circle"
                   ? "50%"
@@ -504,6 +523,32 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
               pointerEvents: "none",
             }}
           />
+        )}
+
+        {isCustom && mask.points && (
+          <svg
+            width={sizeW}
+            height={sizeH}
+            style={{
+              position: "absolute",
+              left: -sizeW / 2,
+              top: -sizeH / 2,
+              overflow: "visible",
+              pointerEvents: "none",
+            }}
+          >
+            <polygon
+              points={mask.points
+                .map(
+                  (p) =>
+                    `${sizeW / 2 + p.x * (sizeW / 2)},${sizeH / 2 + p.y * (sizeH / 2)}`,
+                )
+                .join(" ")}
+              fill="none"
+              stroke="rgba(255,255,255,0.95)"
+              strokeWidth="1.5"
+            />
+          </svg>
         )}
       </div>
 
@@ -568,7 +613,7 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
         />
       )}
 
-      {isClosed && (
+      {isClosed && !isCustom && (
         <>
           {(
             [
@@ -584,6 +629,50 @@ export function PreviewMaskOverlay({ stageRef }: Props) {
                 key={i}
                 type="button"
                 className="preview-mask__corner"
+                style={{ left: centerX + p.x, top: centerY + p.y }}
+                title="Scale mask"
+                aria-label="Scale mask"
+                onPointerDown={(e) => startDrag("scale", e)}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {isCustom &&
+        mask.points!.map((pt, i) => {
+          const lx = pt.x * (sizeW / 2);
+          const ly = pt.y * (sizeH / 2);
+          const p = rotatePoint(lx, ly, rotation);
+          return (
+            <button
+              key={`v-${i}`}
+              type="button"
+              className="preview-mask__corner"
+              style={{ left: centerX + p.x, top: centerY + p.y }}
+              title={`Move point ${i + 1}`}
+              aria-label={`Move point ${i + 1}`}
+              onPointerDown={(e) =>
+                startDrag("vertex", e, { vertexIndex: i })
+              }
+            />
+          );
+        })}
+
+      {isCustom && (
+        <>
+          {(
+            [
+              [-sizeW / 2, -sizeH / 2],
+              [sizeW / 2, sizeH / 2],
+            ] as const
+          ).map(([lx, ly], i) => {
+            const p = rotatePoint(lx, ly, rotation);
+            return (
+              <button
+                key={`scale-${i}`}
+                type="button"
+                className="preview-mask__pill"
                 style={{ left: centerX + p.x, top: centerY + p.y }}
                 title="Scale mask"
                 aria-label="Scale mask"

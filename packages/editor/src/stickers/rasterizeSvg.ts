@@ -1,6 +1,12 @@
+import type { StickerStyleParams } from "../project/types";
+import { SHAPE_STICKER_ID } from "../project/types";
 import { getKineticSticker } from "./kinetic";
 import { generateKineticStickerSvg } from "./kinetic/generateSvg";
 import { STICKER_RASTER_SIZE } from "./manifest";
+import {
+  generateShapeStickerSvg,
+  isShapeStickerId,
+} from "./shapeStickerSvg";
 import {
   DEFAULT_STICKER_BACKING,
   DEFAULT_STICKER_PALETTE,
@@ -8,7 +14,6 @@ import {
   stickerStyleFingerprint,
   toKineticRenderOptions,
 } from "./stickerStyle";
-import type { StickerStyleParams } from "../project/types";
 
 const pngCache = new Map<string, ArrayBuffer>();
 const bitmapCache = new Map<string, ImageBitmap>();
@@ -18,7 +23,7 @@ function cacheKey(
   style: StickerStyleParams | null | undefined,
   size: number,
 ): string {
-  return `${stickerId}|${stickerStyleFingerprint(style)}|${size}`;
+  return `${stickerId}|${stickerStyleFingerprint(style, stickerId)}|${size}`;
 }
 
 function canvasToPngBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
@@ -93,6 +98,9 @@ function svgForSticker(
   style?: StickerStyleParams | null,
   size = STICKER_RASTER_SIZE,
 ): string {
+  if (isShapeStickerId(stickerId) || stickerId === SHAPE_STICKER_ID) {
+    return generateShapeStickerSvg(style, size);
+  }
   const def = getKineticSticker(stickerId);
   if (!def) throw new Error(`Unknown sticker ${stickerId}`);
   return generateKineticStickerSvg(def, {
@@ -141,8 +149,12 @@ export async function rasterizeStickerToImageBitmap(
 }
 
 /** Data-URL for library thumbs (default style). */
-export function stickerThumbDataUrl(stickerId: string, size = 128): string {
-  const svg = svgForSticker(stickerId, null, size);
+export function stickerThumbDataUrl(
+  stickerId: string,
+  size = 128,
+  style?: StickerStyleParams | null,
+): string {
+  const svg = svgForSticker(stickerId, style ?? null, size);
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 

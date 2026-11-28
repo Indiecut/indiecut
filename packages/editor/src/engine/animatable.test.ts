@@ -16,9 +16,12 @@ import {
   humanizeAnimatablePathForClip,
   listKeyedAnimatablePaths,
   makeKeyframe,
+  maskAnimatablePath,
+  maskPointLeaf,
   moveKeyframe,
   moveKeyframeCluster,
   moveKeyframeXY,
+  parseAnimatablePath,
   setAnimatableValue,
   setKeyframeValueById,
   shiftAnimatable,
@@ -37,6 +40,7 @@ import {
 } from "../project/persistence";
 import { createEmptyProject } from "../project/createProject";
 import { createDefaultMask } from "../project/maskDefaults";
+import { maskFingerprint } from "../compositor/maskFingerprint";
 
 // --- solveCubicBezier ---
 assert.equal(solveCubicBezier(0, 0, 1, 1, 0.5), 0.5);
@@ -385,5 +389,122 @@ const selfInKey = selfIn.transform?.scaleX.keyframes.find((k) => k.id === "k_b")
 assert.equal(selfInKey?.easingPresetId, "custom");
 assert.equal(selfInKey?.inHandle.dx, 0.4);
 assert.equal(selfInKey?.tangentMode, "aligned");
+
+// --- custom mask vertex morph ---
+const customMask = createDefaultMask("custom");
+assert.equal(customMask.type, "custom");
+assert.ok((customMask.points?.length ?? 0) >= 3);
+const pointLeaf = maskPointLeaf(0, "x");
+assert.equal(parseAnimatablePath(maskAnimatablePath(customMask.id, pointLeaf)).kind, "mask");
+customMask.points![0]!.x = {
+  staticValue: -0.5,
+  keyframes: [makeKeyframe(0, -0.5), makeKeyframe(1000, 0.5)],
+};
+const customMaskClip: Clip = {
+  ...clip,
+  masksEnabled: true,
+  masks: [customMask],
+};
+const morph0 = evaluateClipMasks(customMaskClip, 0)!;
+const morph1 = evaluateClipMasks(customMaskClip, 1000)!;
+const morphMid = evaluateClipMasks(customMaskClip, 500)!;
+assert.ok(Math.abs(morph0[0]!.points![0]!.x - -0.5) < 1e-6);
+assert.ok(Math.abs(morph1[0]!.points![0]!.x - 0.5) < 1e-6);
+assert.ok(Math.abs(morphMid[0]!.points![0]!.x - 0) < 1e-6);
+assert.ok(
+  humanizeAnimatablePathForClip(
+    customMaskClip,
+    maskAnimatablePath(customMask.id, pointLeaf),
+  ).includes("Point 1"),
+);
+const keyed = listKeyedAnimatablePaths(customMaskClip);
+assert.ok(keyed.includes(maskAnimatablePath(customMask.id, pointLeaf)));
+
+const fpA = maskFingerprint(true, morph0);
+const fpB = maskFingerprint(true, morph1);
+assert.notEqual(fpA, fpB);
+
+// persistence round-trip for custom mask + bubble
+const customProject = {
+  ...JSON.parse(serializeProject(empty)),
+  version: 4,
+  tracks: [
+    {
+      id: "t_custom",
+      type: "video",
+      locked: false,
+      hidden: false,
+      clips: [
+        {
+          id: "c_custom",
+          kind: "video",
+          startMs: 0,
+          durationMs: 1000,
+          inMs: 0,
+          outMs: 1000,
+          masksEnabled: true,
+          masks: [
+            {
+              id: "m_custom",
+              type: "custom",
+              invert: false,
+              feather: { staticValue: 0, keyframes: [] },
+              position: {
+                x: { staticValue: 0, keyframes: [] },
+                y: { staticValue: 0, keyframes: [] },
+              },
+              rotationDeg: { staticValue: 0, keyframes: [] },
+              size: {
+                w: { staticValue: 400, keyframes: [] },
+                h: { staticValue: 400, keyframes: [] },
+              },
+              points: [
+                { x: { staticValue: -0.4, keyframes: [] }, y: { staticValue: -0.4, keyframes: [] } },
+                { x: { staticValue: 0.4, keyframes: [] }, y: { staticValue: -0.4, keyframes: [] } },
+                { x: { staticValue: 0, keyframes: [] }, y: { staticValue: 0.4, keyframes: [] } },
+              ],
+            },
+          ],
+        },
+        {
+          id: "c_text_custom",
+          kind: "text",
+          startMs: 0,
+          durationMs: 1000,
+          inMs: 0,
+          outMs: 1000,
+          text: {
+            content: "Hi",
+            bubble: {
+              type: "custom",
+              fill: "#f00",
+              stroke: "#000",
+              strokeWidth: 2,
+              paddingX: 10,
+              paddingY: 8,
+              points: [
+                { x: -0.5, y: -0.5 },
+                { x: 0.5, y: -0.5 },
+                { x: 0, y: 0.5 },
+              ],
+              pathD: "M-0.5-0.5 L0.5-0.5 L0 0.5 Z",
+            },
+          },
+        },
+      ],
+    },
+  ],
+};
+const parsedCustom = parseProjectJson(JSON.stringify(customProject));
+const parsedMask = parsedCustom.tracks[0]!.clips.find((c) => c.id === "c_custom")!;
+assert.equal(parsedMask.masks?.[0]?.type, "custom");
+assert.equal(parsedMask.masks?.[0]?.points?.length, 3);
+assert.equal(parsedMask.masks?.[0]?.points?.[0]?.x.staticValue, -0.4);
+const parsedBubble = parseTextProps(
+  (parsedCustom.tracks[0]!.clips.find((c) => c.id === "c_text_custom") as Clip).text,
+);
+assert.equal(parsedBubble?.bubble?.type, "custom");
+assert.equal(parsedBubble?.bubble?.points?.length, 3);
+assert.equal(parsedBubble?.bubble?.pathD, "M-0.5-0.5 L0.5-0.5 L0 0.5 Z");
 
 console.log("animatable.test.ts: ok");

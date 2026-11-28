@@ -38,37 +38,21 @@ export type RunExportResult = {
   bytesWritten: number;
 };
 
-/** Below this frame count, skip segmented queue (concat overhead). */
-const PARALLEL_MIN_FRAMES = 90;
-/** Hard cap — each live worker holds full masters in memory. */
-const PARALLEL_MAX_WORKERS = 4;
 /** Target ~5s segments, clamped. */
 const SEGMENT_FRAMES_MIN = 60;
 const SEGMENT_FRAMES_MAX = 300;
 
-/**
- * Concurrent workers: half of reported cores, clamped to [2, 4].
- * Returns 1 for short timelines.
- */
-export function resolveParallelWorkerCount(
-  totalFrames: number,
-  hardwareConcurrency = typeof navigator !== "undefined"
-    ? navigator.hardwareConcurrency
-    : 0,
-): number {
-  if (totalFrames < PARALLEL_MIN_FRAMES) return 1;
-  const cores =
-    typeof hardwareConcurrency === "number" && hardwareConcurrency > 0
-      ? hardwareConcurrency
-      : 2;
-  const byCores = Math.max(2, Math.floor(cores / 2));
-  const capped = Math.min(PARALLEL_MAX_WORKERS, byCores);
-  return Math.min(capped, totalFrames);
-}
-
 export function resolveSegmentFrameCount(fps: number): number {
   const target = Math.round(Math.max(1, fps) * 5);
   return Math.min(SEGMENT_FRAMES_MAX, Math.max(SEGMENT_FRAMES_MIN, target));
+}
+
+/** Use checkpointed ~5s segments when the timeline spans at least two segments. */
+export function shouldUseSegmentedExport(
+  totalFrames: number,
+  fps = 30,
+): boolean {
+  return totalFrames >= resolveSegmentFrameCount(fps) * 2;
 }
 
 /** Many small contiguous ranges for checkpointed queue export. */
@@ -257,9 +241,9 @@ async function pathExists(path: string): Promise<boolean> {
 /**
  * Seek-and-draw export via MediaBunny → Electron StreamTarget.
  *
- * Long timelines: many small video-only segments, processed by a worker pool
- * of size cores/2 (cap 4), with on-disk checkpoints for resume. Short
- * timelines stay on a single worker with in-encode audio.
+ * Short timelines: one hardware worker, single encode.
+ * Longer timelines (≥ ~10s): ~5s segments, one hardware worker sequentially,
+ * on-disk checkpoints for resume (same bitstream for safe concat).
  */
 export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
   const {
@@ -375,8 +359,7 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
       return result;
     }
 
-    const concurrency = resolveParallelWorkerCount(totalFrames);
-    const useQueue = concurrency >= 2;
+    const useQueue = shouldUseSegmentedExport(totalFrames, profile.fps);
 
     if (!useQueue) {
       // Short timeline: mix once, then encode video+audio in one worker.
@@ -495,7 +478,7 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
       };
     }
 
-    // —— Segment queue (small chunks, cores/2 workers, checkpointed) ——
+    // —— Sequential ~5s segments (one HW worker, checkpointed for resume) ——
     const segmentFrames = resolveSegmentFrameCount(profile.fps);
     const ranges = splitSmallFrameRanges(totalFrames, segmentFrames, baseTitle);
 
@@ -576,26 +559,19 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
     if (pendingIndexes.length === 0) {
       reportQueue();
     } else {
-      const poolSize = Math.min(concurrency, pendingIndexes.length);
-      for (let i = 0; i < poolSize; i++) {
-        const session = new ExportWorkerSession();
-        sessions.push(session);
-        session.setFailureHandler((err) => {
-          console.error("Export worker failure", err);
+      const session = new ExportWorkerSession();
+      sessions.push(session);
+      session.setFailureHandler((err) => {
+        console.error("Export worker failure", err);
+      });
+      await session.init({ width: profile.width, height: profile.height });
+      if (onPreview) {
+        session.setPreviewHandler((dataUrl, frameIndex) => {
+          onPreview(dataUrl, frameIndex);
         });
-        await session.init({ width: profile.width, height: profile.height });
-        // After init — dispose() inside init clears handlers.
-        // Only one worker emits UI previews (avoids thrash + overhead).
-        if (i === 0 && onPreview) {
-          session.setPreviewHandler((dataUrl, frameIndex) => {
-            onPreview(dataUrl, frameIndex);
-          });
-        }
       }
 
-      await Promise.all(
-        sessions.map((s) => loadAssetsIntoSession(s, project, isAborted)),
-      );
+      await loadAssetsIntoSession(session, project, isAborted);
 
       if (isAborted()) throw new Error("Export cancelled");
 
@@ -604,20 +580,16 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
         frame: framesDoneBySeg.reduce((a, b) => a + b, 0),
         totalFrames,
         ratio: 0.05,
-        message: `Encoding video (${ranges.length} segments, ${poolSize} workers)…`,
+        message: `Encoding video (${ranges.length} segments)…`,
       });
 
       const queue = [...pendingIndexes];
-      let queueFailed: Error | null = null;
 
-      const workerLoop = async (
-        session: ExportWorkerSession,
-        emitPreview: boolean,
-      ) => {
-        while (!queueFailed) {
+      try {
+        while (queue.length > 0) {
           if (isAborted()) throw new Error("Export cancelled");
           const index = queue.shift();
-          if (index === undefined) return;
+          if (index === undefined) break;
           const range = ranges[index]!;
           try {
             const result = await encodeSegmentRange({
@@ -629,7 +601,7 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
               folder,
               title: range.title,
               aborted: isAborted,
-              emitPreview,
+              emitPreview: Boolean(onPreview),
               onFramesDone: (n) => {
                 framesDoneBySeg[index] = n;
                 reportQueue();
@@ -659,19 +631,10 @@ export async function runExport(args: RunExportArgs): Promise<RunExportResult> {
             throw err;
           }
         }
-      };
-
-      try {
-        await Promise.all(
-          sessions.map((s, i) =>
-            workerLoop(s, i === 0 && Boolean(onPreview)),
-          ),
-        );
       } catch (err) {
         aborted = true;
-        queueFailed = err instanceof Error ? err : new Error(String(err));
         queue.length = 0;
-        throw queueFailed;
+        throw err instanceof Error ? err : new Error(String(err));
       }
     }
 

@@ -190,6 +190,18 @@ export type PreviewWorkerSampleSourcePixel = {
   v: number;
 };
 
+/** Capture the current stage composite as a downscaled JPEG/WebP. */
+export type PreviewWorkerCaptureComposite = {
+  type: "captureComposite";
+  requestId: number;
+  /** Max output width (height scales). Default 768. */
+  maxWidth?: number;
+  /** JPEG/WebP quality 0..1. Default 0.7. */
+  quality?: number;
+  /** Prefer image/jpeg or image/webp. */
+  mimeType?: "image/jpeg" | "image/webp";
+};
+
 export type PreviewWorkerRequest =
   | PreviewWorkerInit
   | PreviewWorkerResize
@@ -198,7 +210,8 @@ export type PreviewWorkerRequest =
   | PreviewWorkerLoadLut
   | PreviewWorkerSeek
   | PreviewWorkerClear
-  | PreviewWorkerSampleSourcePixel;
+  | PreviewWorkerSampleSourcePixel
+  | PreviewWorkerCaptureComposite;
 
 export type PreviewWorkerReady = {
   type: "ready";
@@ -238,9 +251,20 @@ export type PreviewWorkerSampledSourcePixel = {
   b: number;
 };
 
+export type PreviewWorkerCapturedComposite = {
+  type: "capturedComposite";
+  requestId: number;
+  width: number;
+  height: number;
+  mimeType: string;
+  /** JPEG/WebP bytes — transferred. */
+  buffer: ArrayBuffer;
+};
+
 export type PreviewWorkerResponse =
   | PreviewWorkerReady
   | PreviewWorkerLoaded
   | PreviewWorkerSeeked
   | PreviewWorkerFailure
-  | PreviewWorkerSampledSourcePixel;
+  | PreviewWorkerSampledSourcePixel
+  | PreviewWorkerCapturedComposite;

@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { presetPoints } from "../geometry/vectorShape";
 import type { Clip, StickerStyleParams, Track } from "../project/types";
+import { SHAPE_STICKER_ID } from "../project/types";
+import { ColorField } from "./ColorField";
 import {
   KINETIC_PALETTE_KEYS,
   KINETIC_PALETTE_LABELS,
@@ -7,6 +10,11 @@ import {
   type KineticBacking,
   type KineticPaletteKey,
 } from "../stickers/kinetic";
+import {
+  defaultShapeStickerStyle,
+  isShapeStickerId,
+  SHAPE_STICKER_PRESETS,
+} from "../stickers/shapeStickerSvg";
 import {
   DEFAULT_STICKER_BACKING,
   DEFAULT_STICKER_PALETTE,
@@ -17,6 +25,7 @@ import { useEditorStore } from "../store/editorStore";
 import { Clip3DPanel } from "./Clip3DPanel";
 import { TextAnimationPanel } from "./TextAnimationPanel";
 import { TransformFields } from "./TransformFields";
+import { useClipGestureEdit } from "./useClipGestureEdit";
 
 type Props = {
   clip: Clip;
@@ -35,10 +44,15 @@ export function StickerBasicPanel({ clip, track }: Props) {
   const [tab, setTab] = useState<StickerTab>("Primary");
   const updateClip = useEditorStore((s) => s.updateClip);
   const locked = track.locked;
+  const isShape = isShapeStickerId(clip.stickerId);
+  const gesture = useClipGestureEdit(clip.id, "Sticker style");
 
   const style = useMemo((): StickerStyleParams => {
+    if (isShape) {
+      return { ...defaultShapeStickerStyle("star"), ...clip.stickerStyle };
+    }
     return { ...defaultStickerStyle(), ...clip.stickerStyle };
-  }, [clip.stickerStyle]);
+  }, [clip.stickerStyle, isShape]);
 
   const patchStyle = (partial: Partial<StickerStyleParams>) => {
     if (locked) return;
@@ -74,6 +88,113 @@ export function StickerBasicPanel({ clip, track }: Props) {
           <Clip3DPanel clip={clip} track={track} />
         ) : tab === "Animation" ? (
           <TextAnimationPanel clip={clip} track={track} variant="sticker" />
+        ) : tab === "Color" && isShape ? (
+          <section className="inspector-section">
+            <div className="inspector-section__head">
+              <h3 className="inspector-section__title">Shape sticker</h3>
+            </div>
+            <div className="inspector-field inspector-field--stack">
+              <span className="inspector-field__label">Preset</span>
+              <div className="mask-chip-row">
+                {SHAPE_STICKER_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={
+                      style.shapePreset === p.id
+                        ? "mask-chip mask-chip--active"
+                        : "mask-chip"
+                    }
+                    disabled={locked}
+                    onClick={() =>
+                      patchStyle({
+                        shapePreset: p.id,
+                        points: presetPoints(p.id),
+                      })
+                    }
+                  >
+                    {p.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={
+                    style.shapePreset === "custom"
+                      ? "mask-chip mask-chip--active"
+                      : "mask-chip"
+                  }
+                  disabled={locked}
+                  onClick={() =>
+                    patchStyle({
+                      shapePreset: "custom",
+                      points:
+                        style.points && style.points.length >= 3
+                          ? style.points
+                          : presetPoints("star"),
+                    })
+                  }
+                >
+                  Custom
+                </button>
+              </div>
+            </div>
+            <ColorField
+              label="Fill"
+              value={style.fill ?? "#ff5a5f"}
+              fallback="#ff5a5f"
+              locked={locked}
+              onBegin={gesture.begin}
+              onEnd={gesture.end}
+              onLive={(hex) =>
+                gesture.live({
+                  stickerStyle: { ...style, fill: hex },
+                })
+              }
+            />
+            <ColorField
+              label="Stroke"
+              value={style.stroke ?? "#ffffff"}
+              fallback="#ffffff"
+              locked={locked}
+              onBegin={gesture.begin}
+              onEnd={gesture.end}
+              onLive={(hex) =>
+                gesture.live({
+                  stickerStyle: { ...style, stroke: hex },
+                })
+              }
+            />
+            <label className="inspector-field inspector-field--stack">
+              <span className="inspector-field__label">
+                Stroke width {Math.round(style.strokeWidth ?? 4)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={1}
+                disabled={locked}
+                value={style.strokeWidth ?? 4}
+                onChange={(e) =>
+                  patchStyle({ strokeWidth: Number(e.target.value) })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className="inspector-chip"
+              disabled={locked}
+              style={{ marginTop: 8 }}
+              onClick={() =>
+                updateClip(clip.id, {
+                  stickerId: SHAPE_STICKER_ID,
+                  stickerStyle: defaultShapeStickerStyle("star"),
+                })
+              }
+            >
+              Reset shape
+            </button>
+          </section>
         ) : tab === "Color" ? (
           <section className="inspector-section">
             <div className="inspector-section__head">

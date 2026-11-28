@@ -1,11 +1,11 @@
 # ![IndieCut](build/readme-logo.png)
 
-# IndieCut: The Open-Source CapCut Substitute
+# IndieCut: The Open-Source CapCut Alternative - AI Video Editor
 
-> Expert multitrack video editing on a desktop and in a browser.  
+> Expert multitrack video editing powered by AI - on a desktop and in a browser.  
 > **Watermarks are absent. No paywall for Pro. No subscriptions.** Only your timeline.
 
-Built with Electron, React, and Vite, this robust, open-source video editor offers timeline editing, keyframe animation, custom LUTs, 500 SVG stickers, captions, AI background helpers, and export. The same editor can be used as a browser PWA or as a desktop application.
+Built with Electron, React, and Vite, this open-source CapCut substitute is an **AI video editor**: describe a video in chat and IndieCut builds the timeline - images, voiceover, animation, overlays, and more. Full multitrack editing, keyframe animation, custom LUTs, 500 SVG stickers, captions, and export are always available. Use it as a browser PWA or as a desktop application.
 
 [![Try now](https://img.shields.io/badge/Try_now-Web_app-0e1012?style=for-the-badge&logo=googlechrome&logoColor=white)](https://app.indiecut.io)
 [![Download for Mac](https://img.shields.io/badge/Download-macOS-0e1012?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-arm64.dmg)
@@ -18,23 +18,33 @@ Built with Electron, React, and Vite, this robust, open-source video editor offe
 **Try now:** [app.indiecut.io](https://app.indiecut.io)  
 **Website:** [indiecut.io](https://indiecut.io)  
 **Source:** [github.com/Indiecut/indiecut](https://github.com/Indiecut/indiecut)  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **License:** [MIT](LICENSE)
 
 ## Why Use IndieCut?
 
+- **AI-native** - Describe a video in chat; IndieCut builds the timeline with images, voice, animation, and overlays.
 - **Unrestricted** - LUTs, captions, effects, filters, and stickers are always free. No premium levels.
 - **Zero-friction** - Download for Mac or Windows or launch the browser application to begin cutting. There is no 2GB installer tax.
 - **Hackable** - Modern web stack (React, Vite, Electron). You can create your own video workflows, embed it, or fork it.
 
 ## Features
 
+- AI chat that creates and edits projects - story, visuals, voiceover, SFX, and overlays on the timeline
 - Video, audio, text, stickers, captions, and effects in a multi-track timeline
 - Canvas preview with 3D plane controls, masks, blend modes, and transformations
 - 500 editable text templates and 500 kinetic SVG stickers
 - Speech assistants and captions (on-device via Transformers.js + ONNX Runtime)
 - Text animations, filters (LUTs), sound effects, and transitions
 - Export using the web build (download/save picker) or Electron packaging (`electron-builder`)
+
+## AI in action
+
+Edit by chat - ask IndieCut to add text, shapes, overlays, and styled graphics directly on the timeline:
+
+<p align="center">
+  <img src="build/readme-ai-editor.png" alt="IndieCut AI video editor - chat adds text overlays, shapes, and graphics on the timeline" width="900" />
+</p>
 
 ## Editor showcase
 
@@ -107,7 +117,7 @@ The output ends up in `apps/web/dist`; use your preferred static host to serve t
 **Ship a release**
 
 1. When necessary, raise the `"version"` in the root and workspace `package.json` files
-2. Commit, then tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. Commit, then tag: `git tag v1.1.0 && git push origin v1.1.0`
 3. Installers for Mac and Windows are created by the [Release](.github/workflows/release.yml) workflow and published on that tag
 
 **Build locally**
