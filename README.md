@@ -136,7 +136,24 @@ npm run dist:win
 npm run build:web
 ```
 
-By default, installers are unsigned. If the app is blocked by Gatekeeper on macOS, right-click → **Open** the first time. SmartScreen may need **More info** on Windows, but you can still **Run anyway**.
+### First launch (unsigned installers)
+
+Builds are **not Apple/Microsoft signed** yet. That can look scary the first time - the app is fine.
+
+**macOS** - If you see *“IndieCut” is damaged and can’t be opened* (common on Apple Silicon) or a Gatekeeper block:
+
+1. Move IndieCut into **Applications** (if it isn’t already).
+2. In **Terminal**, run:
+
+```bash
+xattr -cr /Applications/IndieCut.app
+```
+
+3. Open IndieCut again from Applications.
+
+You can also try right-click the app → **Open** → confirm. If macOS still says “damaged,” use the `xattr` command above.
+
+**Windows** - If SmartScreen warns, choose **More info** → **Run anyway**.
 
 ## Project layout
 
