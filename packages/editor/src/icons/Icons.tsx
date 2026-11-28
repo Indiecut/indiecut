@@ -623,3 +623,59 @@ export function IconStop({ size = 14, className }: IconProps) {
     </Svg>
   );
 }
+
+export function IconPlus({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M8 3.5v9M3.5 8h9" {...s} />
+    </Svg>
+  );
+}
+
+export function IconInfo({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <circle cx="8" cy="8" r="5.25" {...s} />
+      <path d="M8 7.25v3.5M8 5.35v.15" {...s} />
+    </Svg>
+  );
+}
+
+export function IconFolderOpen({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path
+        d="M2.5 5.25V4.5A1.25 1.25 0 0 1 3.75 3.25h2.1L7.2 4.6h5.05A1.25 1.25 0 0 1 13.5 5.85V7"
+        {...s}
+      />
+      <path
+        d="M2.75 7h10.1l-.85 5.1a1.1 1.1 0 0 1-1.08.9H4.68a1.1 1.1 0 0 1-1.08-.9L2.75 7z"
+        {...s}
+      />
+    </Svg>
+  );
+}
+
+/** Simplified Discord mark for menu / community links. */
+export function IconDiscord({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path
+        d="M5.2 4.4c.7-.3 1.4-.5 2.2-.6l.2.5c.5-.1 1-.1 1.5 0l.2-.5c.8.1 1.5.3 2.2.6 1.2 1.8 1.6 3.6 1.4 5.3-.7.3-1.4.6-2.2.7l-.5-.7c.3-.1.5-.2.8-.4-.2-.1-.3-.2-.5-.3-.9.4-1.9.6-2.9.6s-2-.2-2.9-.6c-.2.1-.3.2-.5.3.3.2.5.3.8.4l-.5.7c-.8-.1-1.5-.4-2.2-.7-.3-1.9.1-3.7 1.4-5.3z"
+        {...s}
+      />
+      <circle cx="6.6" cy="7.6" r="0.7" fill="currentColor" />
+      <circle cx="9.4" cy="7.6" r="0.7" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function IconBug({ size, className }: IconProps) {
+  return (
+    <Svg size={size} className={className}>
+      <path d="M8 5.25v7.25M5.5 7.5h5M4 6l1.5 1.25M12 6 10.5 7.25M4 11l1.5-1M12 11l-1.5-1" {...s} />
+      <path d="M6 5.5a2 2 0 0 1 4 0v5.5a2 2 0 0 1-4 0V5.5z" {...s} />
+      <path d="M6.5 4.25 5.75 3.25M9.5 4.25l.75-1" {...s} />
+    </Svg>
+  );
+}

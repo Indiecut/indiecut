@@ -9,7 +9,9 @@ Built with Electron, React, and Vite, this open-source CapCut substitute is an *
 
 [![Try now](https://img.shields.io/badge/Try_now-Web_app-0e1012?style=for-the-badge&logo=googlechrome&logoColor=white)](https://app.indiecut.io)
 [![Download for Mac](https://img.shields.io/badge/Download-macOS-0e1012?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-mac-arm64.dmg)
-[![Download for Windows](https://img.shields.io/badge/Download-Windows-0e1012?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-win-x64-setup.exe)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0e1012?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/Indiecut/indiecut/releases/latest/download/IndieCut-win-x64-setup.exe)
+
+[![Discord](https://img.shields.io/badge/Discord-Join_the_server-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=0e1012)](https://discord.gg/fMKJqPsBan)
 [![Past releases](https://img.shields.io/badge/Past-releases-9aa3ad?style=for-the-badge)](https://github.com/Indiecut/indiecut/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-0e1012?style=for-the-badge)](LICENSE)
 
@@ -17,6 +19,7 @@ Built with Electron, React, and Vite, this open-source CapCut substitute is an *
 
 **Try now:** [app.indiecut.io](https://app.indiecut.io)  
 **Website:** [indiecut.io](https://indiecut.io)  
+**Discord:** [discord.gg/fMKJqPsBan](https://discord.gg/fMKJqPsBan)  
 **Source:** [github.com/Indiecut/indiecut](https://github.com/Indiecut/indiecut)  
 **Version:** 1.1.0  
 **License:** [MIT](LICENSE)
@@ -165,8 +168,9 @@ See [SECURITY.md](SECURITY.md) for a private way to report vulnerabilities.
 
 - Try now: [https://app.indiecut.io](https://app.indiecut.io)
 - Website: [https://indiecut.io](https://indiecut.io)
+- Discord: [https://discord.gg/fMKJqPsBan](https://discord.gg/fMKJqPsBan) (community)
 - GitHub: [https://github.com/Indiecut/indiecut](https://github.com/Indiecut/indiecut)
-- Issues: [https://github.com/Indiecut/indiecut/issues](https://github.com/Indiecut/indiecut/issues)
+- Issues: [https://github.com/Indiecut/indiecut/issues](https://github.com/Indiecut/indiecut/issues) (bugs & features)
 
 ## Trademark
 

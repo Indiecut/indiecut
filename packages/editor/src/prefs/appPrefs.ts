@@ -13,7 +13,11 @@ const RECENTS_KEY = "recents_v1";
 const LAST_PATH_KEY = "lastProjectPath_v1";
 const SHORTCUTS_KEY = "shortcuts_v1";
 const CHAT_UI_KEY = "chatUi_v1";
-const MAX_RECENTS = 10;
+const SKIPPED_UPDATE_KEY = "skippedUpdateVersion_v1";
+/** Stored recent projects (shown fully in the Recents dialog). */
+const MAX_RECENTS = 50;
+/** Max recents listed inline in the Menu dropdown. */
+export const MENU_RECENTS_VISIBLE = 4;
 
 export type ChatUiPrefs = {
   open: boolean;
@@ -171,6 +175,25 @@ export async function saveChatUiPrefs(
     /* ignore */
   }
   return getChatUiPrefs();
+}
+
+export async function getSkippedUpdateVersion(): Promise<string | null> {
+  try {
+    const value = await prefs.getItem<string>(SKIPPED_UPDATE_KEY);
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setSkippedUpdateVersion(
+  version: string | null,
+): Promise<void> {
+  if (!version?.trim()) {
+    await prefs.removeItem(SKIPPED_UPDATE_KEY);
+    return;
+  }
+  await prefs.setItem(SKIPPED_UPDATE_KEY, version.trim());
 }
 
 /** Drop abandoned localStorage keys from earlier chat-panel persistence attempts. */

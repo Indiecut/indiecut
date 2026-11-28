@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("indiecut", {
-  version: "1.4.0",
+  version: "1.1.0",
   dialog: {
     pickProjectFolder: () => ipcRenderer.invoke("dialog:pickProjectFolder"),
     createProjectFolder: (suggestedName) =>
@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("indiecut", {
     openPath: (targetPath) => ipcRenderer.invoke("shell:openPath", targetPath),
     showItemInFolder: (targetPath) =>
       ipcRenderer.invoke("shell:showItemInFolder", targetPath),
+    openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
   },
   fs: {
     ensureProjectLayout: (projectPath) =>

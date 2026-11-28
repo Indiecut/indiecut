@@ -271,6 +271,18 @@ export function createWebPlatform(): IndieCutBridge {
       // Desktop-only actions — no-ops on web (UI hides these).
       openPath: async () => false,
       showItemInFolder: async () => false,
+      openExternal: async (url) => {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            return false;
+          }
+          window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+          return true;
+        } catch {
+          return false;
+        }
+      },
       downloadPath: async (targetPath) => {
         if (!isOpfsPath(targetPath)) return false;
         return downloadOrSavePath(targetPath);

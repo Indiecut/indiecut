@@ -21,6 +21,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { InspectorPanel } from "./InspectorPanel";
 import { RecordDialog } from "./RecordDialog";
 import { TimelinePanel } from "./TimelinePanel";
+import { UpdateAvailableBanner } from "./UpdateAvailableBanner";
 import "./AppShell.css";
 
 export function AppShell() {
@@ -76,6 +77,7 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <Header />
+      <UpdateAvailableBanner />
       <RecordDialog />
       <div className="app-shell__body">
         {showChat ? (

@@ -136,6 +136,10 @@ export type EditorState = {
   needProjectDialogMessage: string;
   /** Confirm permanently deleting the open project. */
   deleteProjectDialogOpen: boolean;
+  /** About IndieCut dialog (version / links). */
+  aboutDialogOpen: boolean;
+  /** Full recent-projects list dialog. */
+  recentsDialogOpen: boolean;
   exportOpen: boolean;
   /**
    * Export modal session (UI-only). Survives mediaIndex churn / sleep wake so
@@ -294,6 +298,8 @@ export type EditorState = {
   setSettingsOpen: (open: boolean, mode?: "edit" | "create") => void;
   setNeedProjectDialogOpen: (open: boolean, message?: string) => void;
   setDeleteProjectDialogOpen: (open: boolean) => void;
+  setAboutDialogOpen: (open: boolean) => void;
+  setRecentsDialogOpen: (open: boolean) => void;
   setExportOpen: (open: boolean) => void;
   setExportPhase: (phase: ExportUiPhase) => void;
   setExportProgress: (progress: ExportProgress | null) => void;
@@ -372,6 +378,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   needProjectDialogMessage:
     "Open or create a project before continuing.",
   deleteProjectDialogOpen: false,
+  aboutDialogOpen: false,
+  recentsDialogOpen: false,
   exportOpen: false,
   exportPhase: "settings",
   exportProgress: null,
@@ -1144,6 +1152,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   setDeleteProjectDialogOpen: (open) =>
     set({ deleteProjectDialogOpen: open }),
+  setAboutDialogOpen: (open) => set({ aboutDialogOpen: open }),
+  setRecentsDialogOpen: (open) => set({ recentsDialogOpen: open }),
   setExportOpen: (open) => set({ exportOpen: open }),
   setExportPhase: (phase) => set({ exportPhase: phase }),
   setExportProgress: (progress) => set({ exportProgress: progress }),

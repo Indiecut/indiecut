@@ -63,6 +63,11 @@ export interface IndieCutShellBridge {
   openPath: (targetPath: string) => Promise<boolean>;
   showItemInFolder: (targetPath: string) => Promise<boolean>;
   /**
+   * Open an http(s) URL in the system browser (desktop) or a new tab (web).
+   * Prefer this over window.open so Electron does not navigate in-app.
+   */
+  openExternal: (url: string) => Promise<boolean>;
+  /**
    * Browser / PWA: save or download a finished export once.
    * Desktop may omit this (uses openPath / Finder instead).
    */

@@ -388,6 +388,21 @@ handle("shell:showItemInFolder", async (_event, targetPath) => {
   return true;
 });
 
+handle("shell:openExternal", async (_event, url) => {
+  const target = assertString(url, "url");
+  let parsed;
+  try {
+    parsed = new URL(target);
+  } catch {
+    throw new Error("Invalid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Only http(s) URLs can be opened externally");
+  }
+  await shell.openExternal(parsed.toString());
+  return true;
+});
+
 app.on("before-quit", () => {
   for (const [id, session] of exportStreams) {
     try {

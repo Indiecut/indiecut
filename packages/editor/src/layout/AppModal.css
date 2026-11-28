@@ -20,8 +20,94 @@
   overflow: hidden;
 }
 
+.app-modal__dialog--recents {
+  width: min(480px, 100%);
+  max-height: min(70vh, 560px);
+}
+
+.app-modal__body--recents {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding-bottom: 8px;
+}
+
+.app-modal__recents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(48vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.app-modal__recent-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.app-modal__recent-item:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.app-modal__recent-item:disabled {
+  opacity: 0.7;
+}
+
+.app-modal__recent-item-title {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.app-modal__recent-item-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-modal__recent-item-meta {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
 .app-modal__header {
   padding: 16px 18px 0;
+}
+
+.app-modal__header--about {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-modal__about-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.app-modal__header--about .app-modal__title {
+  margin: 0;
 }
 
 .app-modal__title {
@@ -108,4 +194,23 @@
 
 .app-modal__btn--danger:hover:not(:disabled) {
   filter: brightness(1.08);
+}
+
+.app-modal__version {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.app-modal__version-num {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.app-modal__link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
 }

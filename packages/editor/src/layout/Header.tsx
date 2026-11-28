@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  IconBug,
   IconChat,
-  IconKeyboard,
-  IconSettings,
   IconChevronDown,
+  IconDiscord,
+  IconFolderOpen,
+  IconInfo,
+  IconKeyboard,
+  IconPlus,
+  IconSettings,
+  IconTrash,
 } from "../icons/Icons";
-import { getRecents, type RecentProject } from "../prefs/appPrefs";
+import {
+  getRecents,
+  MENU_RECENTS_VISIBLE,
+  type RecentProject,
+} from "../prefs/appPrefs";
 import {
   openProjectAt,
   prepareNewProjectFlow,
@@ -39,6 +49,8 @@ export function Header() {
   const setDeleteProjectDialogOpen = useEditorStore(
     (s) => s.setDeleteProjectDialogOpen,
   );
+  const setAboutDialogOpen = useEditorStore((s) => s.setAboutDialogOpen);
+  const setRecentsDialogOpen = useEditorStore((s) => s.setRecentsDialogOpen);
   const [menuOpen, setMenuOpen] = useState(false);
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const [macFullscreen, setMacFullscreen] = useState(false);
@@ -141,6 +153,7 @@ export function Header() {
                 role="menuitem"
                 onClick={() => void onNew()}
               >
+                <IconPlus size={14} className="app-header__dropdown-icon" />
                 New project…
               </button>
               <button
@@ -149,6 +162,10 @@ export function Header() {
                 role="menuitem"
                 onClick={() => void onOpen()}
               >
+                <IconFolderOpen
+                  size={14}
+                  className="app-header__dropdown-icon"
+                />
                 Open…
               </button>
               {projectPath ? (
@@ -161,6 +178,10 @@ export function Header() {
                     setDeleteProjectDialogOpen(true);
                   }}
                 >
+                  <IconTrash
+                    size={14}
+                    className="app-header__dropdown-icon"
+                  />
                   Delete project…
                 </button>
               ) : null}
@@ -168,7 +189,7 @@ export function Header() {
                 <>
                   <div className="app-header__dropdown-sep" />
                   <div className="app-header__dropdown-label">Recent</div>
-                  {recents.map((r) => (
+                  {recents.slice(0, MENU_RECENTS_VISIBLE).map((r) => (
                     <button
                       key={r.path}
                       type="button"
@@ -181,6 +202,23 @@ export function Header() {
                       <span className="app-header__recent-path">{r.path}</span>
                     </button>
                   ))}
+                  {recents.length > MENU_RECENTS_VISIBLE ? (
+                    <button
+                      type="button"
+                      className="app-header__dropdown-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setRecentsDialogOpen(true);
+                      }}
+                    >
+                      <IconFolderOpen
+                        size={14}
+                        className="app-header__dropdown-icon"
+                      />
+                      Show more…
+                    </button>
+                  ) : null}
                 </>
               ) : null}
               <div className="app-header__dropdown-sep" />
@@ -194,6 +232,7 @@ export function Header() {
                     setAiSettingsOpen(true);
                   }}
                 >
+                  <IconChat size={14} className="app-header__dropdown-icon" />
                   AI settings…
                 </button>
               ) : null}
@@ -206,7 +245,54 @@ export function Header() {
                   setShortcutsOpen(true);
                 }}
               >
+                <IconKeyboard
+                  size={14}
+                  className="app-header__dropdown-icon"
+                />
                 Help → Shortcut
+              </button>
+              <button
+                type="button"
+                className="app-header__dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void getPlatform()?.shell.openExternal(
+                    "https://discord.gg/fMKJqPsBan",
+                  );
+                }}
+              >
+                <IconDiscord
+                  size={14}
+                  className="app-header__dropdown-icon"
+                />
+                Discord community
+              </button>
+              <button
+                type="button"
+                className="app-header__dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void getPlatform()?.shell.openExternal(
+                    "https://github.com/Indiecut/indiecut/issues",
+                  );
+                }}
+              >
+                <IconBug size={14} className="app-header__dropdown-icon" />
+                Report an issue
+              </button>
+              <button
+                type="button"
+                className="app-header__dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setAboutDialogOpen(true);
+                }}
+              >
+                <IconInfo size={14} className="app-header__dropdown-icon" />
+                About IndieCut
               </button>
             </div>
           ) : null}

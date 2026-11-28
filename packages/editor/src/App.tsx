@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { tryRestoreExportUi } from "./export/exportUiSession";
 import { ensureTextFontsLoaded } from "./fonts/registry";
+import { AboutDialog } from "./layout/AboutDialog";
 import { AppShell } from "./layout/AppShell";
 import { CropDialog } from "./layout/CropDialog";
 import { DeleteProjectDialog } from "./layout/DeleteProjectDialog";
@@ -10,6 +11,7 @@ import { isCloudAiAvailable } from "./ai/isCloudAiAvailable";
 import { loadAiSecrets } from "./ai/secrets/aiSecrets";
 import { AiSettingsPanel } from "./layout/AiSettingsPanel";
 import { ProjectSettingsModal } from "./layout/ProjectSettingsModal";
+import { RecentsDialog } from "./layout/RecentsDialog";
 import { ShortcutsPanel } from "./layout/ShortcutsPanel";
 import { bootProjectSession } from "./project/session";
 import { loadChatUiPrefs, loadShortcutBindings } from "./prefs/appPrefs";
@@ -100,6 +102,8 @@ export default function App() {
       <ProjectSettingsModal />
       <NeedProjectDialog />
       <DeleteProjectDialog />
+      <AboutDialog />
+      <RecentsDialog />
       <ExportModal />
       <CropDialog />
       <ShortcutsPanel />
